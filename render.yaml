@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: iaaplicacioncarlos-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: ELEVENLABS_MODEL
+        value: eleven_monolingual_v1
+      - key: TRANSCRIPTION_LANGUAGE
+        value: es-ES
+      - key: TRANSCRIPTION_SAMPLE_RATE
+        value: 16000
+    # Las siguientes variables son sensibles y deben configurarse en el Dashboard de Render:
+    # - GEMINI_API_KEY
+    # - ELEVENLABS_API_KEY
+    # - SUPABASE_URL
+    # - SUPABASE_SERVICE_ROLE_KEY (o SUPABASE_ANON_KEY)
+    # - GOOGLE_APPLICATION_CREDENTIALS (ruta al archivo secreto, ej: /etc/secrets/google-credentials.json)

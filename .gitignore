@@ -8,7 +8,7 @@ node_modules/
 
 # Google Cloud credentials
 google-credentials.json
-*.json
+# *.json (Comentado para permitir package.json)
 
 # Logs
 logs
