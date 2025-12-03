@@ -7,6 +7,9 @@ const cors = require('cors');
 const { WebSocketServer } = require('ws');
 const speech = require('@google-cloud/speech');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 const { getCharacterById, listCharacters } = require('./characters');
 const { 
   searchProducts, 
@@ -21,6 +24,30 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_monolingual_v1';
 const DEFAULT_TRANSCRIPTION_LANGUAGE = process.env.TRANSCRIPTION_LANGUAGE || 'es-ES';
 const DEFAULT_SAMPLE_RATE = Number(process.env.TRANSCRIPTION_SAMPLE_RATE) || 16000;
+
+// --- CONFIGURACIÓN DE CREDENCIALES GOOGLE (RAILWAY/BASE64) ---
+function setupGoogleCredentials() {
+  // Si ya existe la variable estándar (local), no hacemos nada
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    return;
+  }
+
+  // Si estamos en Railway y tenemos la variable BASE64
+  if (process.env.GOOGLE_CREDENTIALS_BASE64) {
+    try {
+      const creds = Buffer.from(process.env.GOOGLE_CREDENTIALS_BASE64, 'base64').toString('utf-8');
+      const tempPath = path.join(os.tmpdir(), 'google-credentials.json');
+      fs.writeFileSync(tempPath, creds);
+      process.env.GOOGLE_APPLICATION_CREDENTIALS = tempPath;
+      console.log(`[System] Credenciales de Google generadas temporalmente en: ${tempPath}`);
+    } catch (error) {
+      console.error('[System] Error al decodificar GOOGLE_CREDENTIALS_BASE64:', error);
+    }
+  }
+}
+
+// Ejecutar configuración de credenciales antes de iniciar nada
+setupGoogleCredentials();
 
 const app = express();
 const server = http.createServer(app);
