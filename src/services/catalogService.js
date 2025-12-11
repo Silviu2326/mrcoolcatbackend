@@ -1,5 +1,25 @@
 const { createClient } = require('@supabase/supabase-js');
 
+/**
+ * ESTRATEGIA DE TRADUCCIÓN MULTIIDIOMA
+ * =====================================
+ * Este servicio retorna datos tal como están almacenados en Supabase (generalmente en español).
+ * NO se realizan traducciones en este nivel.
+ *
+ * El modelo Gemini se encarga automáticamente de:
+ * 1. Recibir los datos en su idioma original
+ * 2. Traducir y presentar la información en el idioma solicitado por el usuario
+ * 3. Mantener coherencia con las instrucciones del sistema en ese idioma
+ *
+ * Ventajas de este enfoque:
+ * - Más simple: no requiere duplicar datos en la BD
+ * - Más flexible: Gemini puede adaptar las traducciones al contexto
+ * - Menos mantenimiento: un solo conjunto de datos
+ *
+ * Si en el futuro se requiere mayor control sobre las traducciones,
+ * se puede migrar a la Opción B (columnas traducidas en Supabase).
+ */
+
 // Inicializar cliente solo si las variables existen
 let supabase = null;
 
@@ -22,6 +42,9 @@ function getSupabaseClient() {
  * Busca productos en la base de datos por nombre o descripción.
  * @param {string} query - Término de búsqueda (ej: "cerveza rubia", "Candela").
  * @returns {Promise<Array>} - Lista de productos encontrados.
+ *
+ * Nota: Los datos se retornan en su idioma original (generalmente español).
+ * Gemini traducirá automáticamente al idioma solicitado por el usuario.
  */
 async function searchProducts(query) {
   const client = getSupabaseClient();
@@ -45,6 +68,9 @@ async function searchProducts(query) {
 
 /**
  * Obtiene el menú completo (útil si el usuario pide "qué tienes").
+ *
+ * Nota: Los datos se retornan en su idioma original.
+ * Gemini traducirá automáticamente al idioma solicitado.
  */
 async function getFullMenu() {
   const client = getSupabaseClient();
@@ -73,6 +99,9 @@ async function getFullMenu() {
 /**
  * Busca eventos próximos.
  * @param {string} query - Término de búsqueda opcional.
+ *
+ * Nota: Los datos se retornan en su idioma original.
+ * Gemini traducirá automáticamente al idioma solicitado.
  */
 async function searchEvents(query) {
   const client = getSupabaseClient();
@@ -89,7 +118,7 @@ async function searchEvents(query) {
   }
 
   const { data, error } = await dbQuery.limit(5);
-  
+
   if (error) {
     console.error('Error buscando eventos:', error);
     return [];
@@ -100,6 +129,9 @@ async function searchEvents(query) {
 /**
  * Busca tiendas o bares.
  * @param {string} location - Ciudad o zona.
+ *
+ * Nota: Los datos se retornan en su idioma original.
+ * Gemini traducirá automáticamente al idioma solicitado.
  */
 async function searchStores(location) {
   const client = getSupabaseClient();
@@ -123,18 +155,26 @@ async function searchStores(location) {
 /**
  * Busca información sobre los personajes (usando el archivo local, no BD).
  * @param {string} name - Nombre del personaje.
+ *
+ * Nota: Esta función retorna datos de personajes en español por defecto.
+ * Gemini traducirá automáticamente la información al idioma solicitado.
+ * Los personajes tienen versiones multiidioma disponibles, pero en este
+ * contexto de búsqueda se usa el idioma por defecto para simplificar.
  */
 async function searchCharactersInfo(name) {
   // Importamos aquí para evitar ciclos si fuera necesario, o usamos el módulo ya cargado en server.
   // Como esto es un servicio, podemos requerir el archivo de personajes directamente.
-  const { listCharacters } = require('../characters'); 
-  const allChars = listCharacters();
-  
+  const { listCharacters } = require('../characters');
+
+  // Retornamos personajes en idioma por defecto (español)
+  // Gemini se encargará de traducir si el usuario está en otro idioma
+  const allChars = listCharacters('es');
+
   if (!name) return allChars.map(c => ({ name: c.name, summary: c.summary }));
 
   const lowerName = name.toLowerCase();
-  return allChars.filter(c => 
-    c.name.toLowerCase().includes(lowerName) || 
+  return allChars.filter(c =>
+    c.name.toLowerCase().includes(lowerName) ||
     c.summary.toLowerCase().includes(lowerName)
   ).map(c => ({
     name: c.name,

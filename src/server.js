@@ -25,6 +25,13 @@ const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_monolingual_v1'
 const DEFAULT_TRANSCRIPTION_LANGUAGE = process.env.TRANSCRIPTION_LANGUAGE || 'es-ES';
 const DEFAULT_SAMPLE_RATE = Number(process.env.TRANSCRIPTION_SAMPLE_RATE) || 16000;
 
+// Idiomas soportados
+const SUPPORTED_LANGUAGES = {
+  es: 'es-ES',
+  en: 'en-US'
+};
+const DEFAULT_LANGUAGE = 'es';
+
 // --- CONFIGURACIÓN DE CREDENCIALES GOOGLE (RAILWAY/BASE64) ---
 function setupGoogleCredentials() {
   // Si ya existe la variable estándar (local), no hacemos nada
@@ -59,61 +66,110 @@ app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
 
 // --- CONFIGURACIÓN DE HERRAMIENTAS (TOOLS) ---
-const tools = [
-  {
-    function_declarations: [
-      {
-        name: "searchProducts",
+function getTools(language = 'es') {
+  const toolDescriptions = {
+    es: {
+      searchProducts: {
         description: "Busca cervezas o productos en el catálogo por nombre, tipo o descripción. Úsala cuando el usuario pregunte por una cerveza específica o precios.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            query: { type: "STRING", description: "El término de búsqueda (ej: 'rubia', 'Candela', 'IPA')." }
-          },
-          required: ["query"]
-        }
+        query: "El término de búsqueda (ej: 'rubia', 'Candela', 'IPA')."
       },
-      {
-        name: "getFullMenu",
-        description: "Obtiene el menú completo de cervezas disponibles. Úsala cuando el usuario pregunte 'qué tienes' o quiera ver la carta.",
-        parameters: { type: "OBJECT", properties: {}, required: [] }
+      getFullMenu: {
+        description: "Obtiene el menú completo de cervezas disponibles. Úsala cuando el usuario pregunte 'qué tienes' o quiera ver la carta."
       },
-      {
-        name: "searchEvents",
+      searchEvents: {
         description: "Busca eventos, conciertos o fiestas próximas en el Universo Cool Cat. Úsala si preguntan 'qué hay para hacer', 'cuándo es la fiesta', etc.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            query: { type: "STRING", description: "Tipo de evento o fecha aproximada (opcional)." }
-          },
-          required: []
-        }
+        query: "Tipo de evento o fecha aproximada (opcional)."
       },
-      {
-        name: "searchStores",
+      searchStores: {
         description: "Busca dónde comprar cerveza o ubicación de bares. Úsala si preguntan 'dónde está el bar', 'dónde comprar', 'ubicación'.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            location: { type: "STRING", description: "Ciudad o zona mencionada por el usuario." }
-          },
-          required: []
-        }
+        location: "Ciudad o zona mencionada por el usuario."
       },
-      {
-        name: "getCharacterInfo",
+      getCharacterInfo: {
         description: "Obtiene información sobre otros personajes del universo. Úsala si el usuario pregunta 'quién es Buck', 'háblame de La Catira', etc.",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            name: { type: "STRING", description: "Nombre del personaje a buscar." }
-          },
-          required: ["name"]
-        }
+        name: "Nombre del personaje a buscar."
       }
-    ]
-  }
-];
+    },
+    en: {
+      searchProducts: {
+        description: "Search for beers or products in the catalog by name, type or description. Use it when the user asks about a specific beer or prices.",
+        query: "The search term (e.g., 'blonde', 'Candela', 'IPA')."
+      },
+      getFullMenu: {
+        description: "Gets the complete menu of available beers. Use it when the user asks 'what do you have' or wants to see the menu."
+      },
+      searchEvents: {
+        description: "Search for upcoming events, concerts or parties in the Cool Cat Universe. Use it if they ask 'what's happening', 'when is the party', etc.",
+        query: "Type of event or approximate date (optional)."
+      },
+      searchStores: {
+        description: "Search for where to buy beer or bar locations. Use it if they ask 'where is the bar', 'where to buy', 'location'.",
+        location: "City or area mentioned by the user."
+      },
+      getCharacterInfo: {
+        description: "Gets information about other characters in the universe. Use it if the user asks 'who is Buck', 'tell me about La Catira', etc.",
+        name: "Name of the character to search for."
+      }
+    }
+  };
+
+  const i18n = toolDescriptions[language] || toolDescriptions.es;
+
+  return [
+    {
+      function_declarations: [
+        {
+          name: "searchProducts",
+          description: i18n.searchProducts.description,
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              query: { type: "STRING", description: i18n.searchProducts.query }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "getFullMenu",
+          description: i18n.getFullMenu.description,
+          parameters: { type: "OBJECT", properties: {}, required: [] }
+        },
+        {
+          name: "searchEvents",
+          description: i18n.searchEvents.description,
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              query: { type: "STRING", description: i18n.searchEvents.query }
+            },
+            required: []
+          }
+        },
+        {
+          name: "searchStores",
+          description: i18n.searchStores.description,
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              location: { type: "STRING", description: i18n.searchStores.location }
+            },
+            required: []
+          }
+        },
+        {
+          name: "getCharacterInfo",
+          description: i18n.getCharacterInfo.description,
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", description: i18n.getCharacterInfo.name }
+            },
+            required: ["name"]
+          }
+        }
+      ]
+    }
+  ];
+}
 
 const functionsMap = {
   searchProducts: async ({ query }) => {
@@ -179,28 +235,63 @@ function ensureElevenLabsKey() {
   return apiKey;
 }
 
-function buildSystemInstruction(character) {
+function buildSystemInstruction(character, language = 'es') {
+  const instructions = {
+    es: {
+      actAs: `ACTÚA ÚNICA Y EXCLUSIVAMENTE COMO: ${character.name}.`,
+      context: `CONTEXTO: Vives en el Universo Cool Cat (Cool City / Playa Funkadelic).`,
+      profile: `TU PERFIL:`,
+      toneLabel: `TU TONO DE VOZ Y ESTILO:`,
+      useThisTone: 'Usa este tono en cada respuesta. No seas genérico.',
+      catchphraseLabel: `TU FRASE CARACTERÍSTICA:`,
+      useCatchphrase: 'Úsala de vez en cuando, solo si encaja naturalmente en la conversación.',
+      rulesLabel: 'REGLAS DE INTERACCIÓN:',
+      rules: [
+        '1. Responde siempre en español.',
+        '2. Mantén la coherencia con tu personalidad. Nunca digas que eres una IA.',
+        '3. Tienes acceso al inventario (base de datos) para buscar cervezas, eventos o tiendas si te preguntan.',
+        '4. Si te preguntan por otros personajes, responde según lo que tú sabes de ellos o usa la herramienta de búsqueda de personajes.',
+        '5. Sé breve y conversacional, como en un chat o hablando en un bar.',
+      ]
+    },
+    en: {
+      actAs: `ACT EXCLUSIVELY AS: ${character.name}.`,
+      context: `CONTEXT: You live in the Cool Cat Universe (Cool City / Playa Funkadelic).`,
+      profile: `YOUR PROFILE:`,
+      toneLabel: `YOUR VOICE TONE AND STYLE:`,
+      useThisTone: 'Use this tone in every response. Don\'t be generic.',
+      catchphraseLabel: `YOUR SIGNATURE PHRASE:`,
+      useCatchphrase: 'Use it from time to time, only if it fits naturally in the conversation.',
+      rulesLabel: 'INTERACTION RULES:',
+      rules: [
+        '1. Always respond in English.',
+        '2. Stay consistent with your personality. Never say you are an AI.',
+        '3. You have access to the inventory (database) to search for beers, events or stores if asked.',
+        '4. If asked about other characters, respond based on what you know about them or use the character search tool.',
+        '5. Be brief and conversational, like chatting or talking at a bar.',
+      ]
+    }
+  };
+
+  const i18n = instructions[language] || instructions.es;
+
   return [
-    `ACTÚA ÚNICA Y EXCLUSIVAMENTE COMO: ${character.name}.`,
-    `CONTEXTO: Vives en el Universo Cool Cat (Cool City / Playa Funkadelic).`,
+    i18n.actAs,
+    i18n.context,
     '',
-    `TU PERFIL:`,
-    `${character.summary}`,
+    i18n.profile,
+    character.summary,
     '',
-    `TU TONO DE VOZ Y ESTILO:`,
-    `${character.tone}`,
-    'Usa este tono en cada respuesta. No seas genérico.',
+    i18n.toneLabel,
+    character.tone,
+    i18n.useThisTone,
     '',
-    `TU FRASE CARACTERÍSTICA:`,
+    i18n.catchphraseLabel,
     `"${character.catchphrase}"`,
-    'Úsala de vez en cuando, solo si encaja naturalmente en la conversación.',
+    i18n.useCatchphrase,
     '',
-    'REGLAS DE INTERACCIÓN:',
-    '1. Responde siempre en español (salvo que te hablen en otro idioma).',
-    '2. Mantén la coherencia con tu personalidad. Nunca digas que eres una IA.',
-    '3. Tienes acceso al inventario (base de datos) para buscar cervezas, eventos o tiendas si te preguntan.',
-    '4. Si te preguntan por otros personajes, responde según lo que tú sabes de ellos o usa la herramienta de búsqueda de personajes.',
-    '5. Sé breve y conversacional, como en un chat o hablando en un bar.',
+    i18n.rulesLabel,
+    ...i18n.rules,
   ].join('\n');
 }
 
@@ -220,19 +311,20 @@ function mapHistory(history = []) {
 }
 
 // --- LÓGICA DE GENERACIÓN CON FUNCTION CALLING ---
-async function generateCharacterReply({ character, message, history }) {
+async function generateCharacterReply({ character, message, history, language = 'es' }) {
   const genAI = ensureGeminiClient();
-  const systemInstruction = buildSystemInstruction(character);
+  const systemInstruction = buildSystemInstruction(character, language);
   const chatHistory = mapHistory(history);
+  const tools = getTools(language);
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
     systemInstruction,
-    tools: tools, // Inyectamos las herramientas
+    tools: tools, // Inyectamos las herramientas traducidas
   });
 
   const chat = model.startChat({ history: chatHistory });
-  
+
   // 1. Enviamos el mensaje del usuario
   let result = await chat.sendMessage(message);
   let response = result.response;
@@ -242,23 +334,23 @@ async function generateCharacterReply({ character, message, history }) {
   while (functionCalls && functionCalls.length > 0) {
     const call = functionCalls[0]; // Procesamos la primera llamada (simplificación)
     const { name, args } = call;
-    
+
     if (functionsMap[name]) {
       // Ejecutamos la función real (consulta a Supabase)
       const functionResult = await functionsMap[name](args);
-      
+
       // Enviamos el resultado de vuelta a Gemini
-      result = await chat.sendMessage([{ 
+      result = await chat.sendMessage([{
         functionResponse: {
           name: name,
           response: { result: functionResult }
         }
       }]);
-      
+
       response = result.response;
       functionCalls = response.functionCalls();
     } else {
-      break; 
+      break;
     }
   }
 
@@ -328,6 +420,7 @@ function setupVoiceWebSocket(socket) {
   let closed = false;
   let speechLanguage = DEFAULT_TRANSCRIPTION_LANGUAGE;
   let sampleRate = DEFAULT_SAMPLE_RATE;
+  let currentLanguage = DEFAULT_LANGUAGE;
 
   function cleanup() {
     if (closed) return;
@@ -407,6 +500,7 @@ function setupVoiceWebSocket(socket) {
         character,
         message: transcript,
         history,
+        language: currentLanguage,
       });
 
       history.push({ role: 'model', content: replyText });
@@ -453,13 +547,24 @@ function setupVoiceWebSocket(socket) {
         return;
       }
 
-      const { characterId, history: initialHistory, languageCode, sampleRateHertz } = payload;
+      const { characterId, history: initialHistory, language, languageCode, sampleRateHertz } = payload;
       if (!characterId) {
         sendWsEvent(socket, 'error', { message: 'Falta characterId en el mensaje de inicio.' });
         return;
       }
 
-      const selected = getCharacterById(characterId);
+      // Validar y establecer el idioma
+      const requestedLanguage = language || DEFAULT_LANGUAGE;
+      if (!SUPPORTED_LANGUAGES[requestedLanguage]) {
+        sendWsEvent(socket, 'error', {
+          message: `Idioma no soportado. Idiomas disponibles: ${Object.keys(SUPPORTED_LANGUAGES).join(', ')}`
+        });
+        return;
+      }
+
+      currentLanguage = requestedLanguage;
+
+      const selected = getCharacterById(characterId, currentLanguage);
       if (!selected) {
         sendWsEvent(socket, 'error', { message: `Personaje ${characterId} no encontrado.` });
         return;
@@ -467,18 +572,21 @@ function setupVoiceWebSocket(socket) {
 
       if (!selected.voice || !selected.voice.elevenLabsVoiceId) {
         sendWsEvent(socket, 'error', {
-          message: `Personaje ${characterId} no tiene voz configurada.`, 
+          message: `Personaje ${characterId} no tiene voz configurada.`,
         });
         return;
       }
 
       character = selected;
       history = Array.isArray(initialHistory) ? [...initialHistory] : [];
-      speechLanguage = languageCode || DEFAULT_TRANSCRIPTION_LANGUAGE;
+
+      // Determinar languageCode para transcripción según el idioma si no se especifica
+      speechLanguage = languageCode || SUPPORTED_LANGUAGES[currentLanguage];
       sampleRate = Number(sampleRateHertz) || DEFAULT_SAMPLE_RATE;
 
       sendWsEvent(socket, 'ready', {
         characterId: character.id,
+        language: currentLanguage,
         languageCode: speechLanguage,
         sampleRateHertz: sampleRate,
       });
@@ -514,14 +622,16 @@ wss.on('connection', (socket) => {
 
 // Routes
 app.get('/', (req, res) => {
+  const language = req.query.language || DEFAULT_LANGUAGE;
   res.json({
     message: 'Cool Cat IA backend operativo',
-    availableCharacters: listCharacters().map(({ id, name }) => ({ id, name })),
+    availableCharacters: listCharacters(language).map(({ id, name }) => ({ id, name })),
+    supportedLanguages: Object.keys(SUPPORTED_LANGUAGES),
   });
 });
 
 app.post('/chat', async (req, res) => {
-  const { characterId, message, history, returnAudio } = req.body || {};
+  const { characterId, message, history, returnAudio, language = DEFAULT_LANGUAGE } = req.body || {};
 
   if (!characterId || !message) {
     return res.status(400).json({
@@ -529,7 +639,14 @@ app.post('/chat', async (req, res) => {
     });
   }
 
-  const character = getCharacterById(characterId);
+  // Validar idioma soportado
+  if (!SUPPORTED_LANGUAGES[language]) {
+    return res.status(400).json({
+      error: `Idioma no soportado. Idiomas disponibles: ${Object.keys(SUPPORTED_LANGUAGES).join(', ')}`,
+    });
+  }
+
+  const character = getCharacterById(characterId, language);
   if (!character) {
     return res.status(404).json({
       error: `Personaje con id "${characterId}" no encontrado.`,
@@ -541,6 +658,7 @@ app.post('/chat', async (req, res) => {
       character,
       message,
       history,
+      language,
     });
 
     // Si se solicita audio, generar y enviar el stream de audio
@@ -552,6 +670,7 @@ app.post('/chat', async (req, res) => {
         res.setHeader('Content-Type', 'audio/mpeg');
         res.setHeader('X-Reply-Text', encodeURIComponent(reply));
         res.setHeader('X-Character-Name', encodeURIComponent(character.name));
+        res.setHeader('X-Language', language);
 
         // Stream el audio al cliente
         audioStream.pipe(res);
@@ -562,6 +681,7 @@ app.post('/chat', async (req, res) => {
           characterId: character.id,
           characterName: character.name,
           reply,
+          language,
           usedModel: GEMINI_MODEL,
           audioError: 'No se pudo generar el audio, pero aquí está el texto.',
         });
@@ -572,6 +692,7 @@ app.post('/chat', async (req, res) => {
         characterId: character.id,
         characterName: character.name,
         reply,
+        language,
         usedModel: GEMINI_MODEL,
       });
     }
