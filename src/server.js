@@ -437,13 +437,13 @@ function setupVoiceWebSocket(socket) {
     cleanup();
   });
 
-  function startSpeechStream() {
+  function startSpeechStream(encoding = 'LINEAR16') {
     try {
       const client = ensureSpeechClient();
       speechStream = client
         .streamingRecognize({
           config: {
-            encoding: 'LINEAR16',
+            encoding: encoding,
             sampleRateHertz: sampleRate,
             languageCode: speechLanguage,
             enableAutomaticPunctuation: true,
@@ -583,15 +583,17 @@ function setupVoiceWebSocket(socket) {
       // Determinar languageCode para transcripción según el idioma si no se especifica
       speechLanguage = languageCode || SUPPORTED_LANGUAGES[currentLanguage];
       sampleRate = Number(sampleRateHertz) || DEFAULT_SAMPLE_RATE;
+      const encoding = payload.encoding || 'LINEAR16';
 
       sendWsEvent(socket, 'ready', {
         characterId: character.id,
         language: currentLanguage,
         languageCode: speechLanguage,
         sampleRateHertz: sampleRate,
+        encoding: encoding
       });
 
-      startSpeechStream();
+      startSpeechStream(encoding);
       return;
     }
 
