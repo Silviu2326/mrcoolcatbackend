@@ -422,6 +422,7 @@ function setupVoiceWebSocket(socket) {
     let sampleRate = DEFAULT_SAMPLE_RATE;
     let currentLanguage = DEFAULT_LANGUAGE;
     let currentEncoding = 'LINEAR16';
+    let returnAudio = true;
   
     function cleanup() {
       if (closed) return;
@@ -511,13 +512,15 @@ function setupVoiceWebSocket(socket) {
         history.push({ role: 'model', content: replyText });
         sendWsEvent(socket, 'reply_text', { text: replyText });
   
-        const audioStream = await synthesizeVoice(character, replyText);
-        sendWsEvent(socket, 'reply_audio_start', { format: 'audio/mpeg' });
-        for await (const chunk of audioStream) {
-          if (socket.readyState !== socket.OPEN) break;
-          socket.send(chunk, { binary: true });
+        if (returnAudio) {
+            const audioStream = await synthesizeVoice(character, replyText);
+            sendWsEvent(socket, 'reply_audio_start', { format: 'audio/mpeg' });
+            for await (const chunk of audioStream) {
+              if (socket.readyState !== socket.OPEN) break;
+              socket.send(chunk, { binary: true });
+            }
+            sendWsEvent(socket, 'reply_audio_end');
         }
-        sendWsEvent(socket, 'reply_audio_end');
       } finally {
         processingReply = false;
       }
@@ -568,7 +571,7 @@ function setupVoiceWebSocket(socket) {
           return;
         }
   
-        const { characterId, history: initialHistory, language, languageCode, sampleRateHertz, encoding } = payload;
+        const { characterId, history: initialHistory, language, languageCode, sampleRateHertz, encoding, returnAudio: shouldReturnAudio } = payload;
         if (!characterId) {
           sendWsEvent(socket, 'error', { message: 'Falta characterId en el mensaje de inicio.' });
           return;
@@ -584,6 +587,10 @@ function setupVoiceWebSocket(socket) {
         }
   
         currentLanguage = requestedLanguage;
+        // Si se especifica returnAudio en el payload, lo usamos. Si no, por defecto es true.
+        if (typeof shouldReturnAudio !== 'undefined') {
+            returnAudio = shouldReturnAudio;
+        }
   
         const selected = getCharacterById(characterId, currentLanguage);
         if (!selected) {
@@ -616,6 +623,15 @@ function setupVoiceWebSocket(socket) {
   
         startSpeechStream(currentEncoding);
         return;
+      }
+
+      if (type === 'config_update') {
+          const { returnAudio: shouldReturnAudio } = payload;
+          if (typeof shouldReturnAudio !== 'undefined') {
+              returnAudio = shouldReturnAudio;
+              console.log(`[WS] Config actualizada: returnAudio = ${returnAudio}`);
+          }
+          return;
       }
     if (type === 'stop') {
       if (speechStream) {
