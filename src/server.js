@@ -115,7 +115,6 @@ function getTools(language = 'es') {
   const i18n = toolDescriptions[language] || toolDescriptions.es;
 
   return [
-    { googleSearch: {} },
     {
       function_declarations: [
         {
@@ -252,8 +251,7 @@ function buildSystemInstruction(character, language = 'es') {
         '2. Mantén la coherencia con tu personalidad. Nunca digas que eres una IA.',
         '3. Tienes acceso al inventario (base de datos) para buscar cervezas, eventos o tiendas si te preguntan.',
         '4. Si te preguntan por otros personajes, responde según lo que tú sabes de ellos o usa la herramienta de búsqueda de personajes.',
-        '5. Si te preguntan algo que no sabes o que no está en la base de datos, PUEDES BUSCAR EN INTERNET usando la herramienta de búsqueda.',
-        '6. Sé breve y conversacional, como en un chat o hablando en un bar.',
+        '5. Sé breve y conversacional, como en un chat o hablando en un bar.',
       ]
     },
     en: {
@@ -270,8 +268,7 @@ function buildSystemInstruction(character, language = 'es') {
         '2. Stay consistent with your personality. Never say you are an AI.',
         '3. You have access to the inventory (database) to search for beers, events or stores if asked.',
         '4. If asked about other characters, respond based on what you know about them or use the character search tool.',
-        '5. If you are asked something you don\'t know or that is not in the database, YOU CAN SEARCH THE INTERNET using the search tool.',
-        '6. Be brief and conversational, like chatting or talking at a bar.',
+        '5. Be brief and conversational, like chatting or talking at a bar.',
       ]
     }
   };
@@ -313,22 +310,53 @@ function mapHistory(history = []) {
     .filter(Boolean);
 }
 
+// --- CLASIFICACIÓN DE INTENCIÓN (ROUTER) ---
+async function classifyIntent(message) {
+  const routerModel = ensureGeminiClient().getGenerativeModel({ 
+    model: 'gemini-2.0-flash-lite-preview-02-05',
+    systemInstruction: `You are a router. Analyze the user message and output only ONE word:
+    - SEARCH: If the user asks for real-time news, weather, sports scores, general world facts not related to the bar, or explicitly asks to search the web.
+    - INTERNAL: If the user asks about beers, menu, prices, bar events, store locations, characters of the story, greetings, or roleplay.
+    
+    Message: "${message}"`
+  });
+
+  try {
+    const result = await routerModel.generateContent(message);
+    const intent = result.response.text().trim().toUpperCase();
+    return intent.includes('SEARCH') ? 'SEARCH' : 'INTERNAL';
+  } catch (e) {
+    console.error('[Router] Error:', e);
+    return 'INTERNAL'; // Fallback seguro
+  }
+}
+
 // --- LÓGICA DE GENERACIÓN CON FUNCTION CALLING ---
 async function generateCharacterReply({ character, message, history, language = 'es', userLocation }) {
   const genAI = ensureGeminiClient();
   const systemInstruction = buildSystemInstruction(character, language);
   const chatHistory = mapHistory(history);
-  const tools = getTools(language);
+  
+  // 1. Router Step
+  const intent = await classifyIntent(message);
+  console.log(`[Router] Intent detected: ${intent}`);
+
+  let toolsToUse;
+  if (intent === 'SEARCH') {
+    toolsToUse = [{ googleSearch: {} }];
+  } else {
+    toolsToUse = getTools(language);
+  }
 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
     systemInstruction,
-    tools: tools, // Inyectamos las herramientas traducidas
+    tools: toolsToUse, 
   });
 
   const chat = model.startChat({ history: chatHistory });
 
-  // 1. Enviamos el mensaje del usuario
+  // 2. Enviamos el mensaje del usuario
   // Si tenemos ubicación, la añadimos al contexto del mensaje
   let finalMessage = message;
   if (userLocation) {
@@ -338,39 +366,40 @@ async function generateCharacterReply({ character, message, history, language = 
 
   let result = await chat.sendMessage(finalMessage);
   let response = result.response;
-  let functionCalls = response.functionCalls();
+  
+  // Solo procesamos function calls si estamos en modo INTERNAL (que tiene las tools de funciones)
+  if (intent === 'INTERNAL') {
+      let functionCalls = response.functionCalls();
 
-  // 2. Si Gemini quiere usar una herramienta, entramos en el bucle
-  while (functionCalls && functionCalls.length > 0) {
-    const call = functionCalls[0]; // Procesamos la primera llamada (simplificación)
-    const { name, args } = call;
+      // 3. Loop de herramientas
+      while (functionCalls && functionCalls.length > 0) {
+        const call = functionCalls[0];
+        const { name, args } = call;
 
-    if (functionsMap[name]) {
-      // Inyectamos userLocation en los argumentos si la herramienta es searchStores
-      let finalArgs = args;
-      if (name === 'searchStores' && userLocation) {
-          finalArgs = { ...args, userLocation };
-      }
+        if (functionsMap[name]) {
+          let finalArgs = args;
+          if (name === 'searchStores' && userLocation) {
+              finalArgs = { ...args, userLocation };
+          }
 
-      // Ejecutamos la función real (consulta a Supabase)
-      const functionResult = await functionsMap[name](finalArgs);
+          const functionResult = await functionsMap[name](finalArgs);
 
-      // Enviamos el resultado de vuelta a Gemini
-      result = await chat.sendMessage([{
-        functionResponse: {
-          name: name,
-          response: { result: functionResult }
+          result = await chat.sendMessage([{
+            functionResponse: {
+              name: name,
+              response: { result: functionResult }
+            }
+          }]);
+
+          response = result.response;
+          functionCalls = response.functionCalls();
+        } else {
+          break;
         }
-      }]);
-
-      response = result.response;
-      functionCalls = response.functionCalls();
-    } else {
-      break;
-    }
+      }
   }
 
-  // 3. Obtenemos el texto final
+  // 4. Obtenemos el texto final
   const responseText = response.text();
 
   if (response.candidates?.[0]?.groundingMetadata) {
