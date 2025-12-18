@@ -133,14 +133,23 @@ async function searchEvents(query) {
  * Nota: Los datos se retornan en su idioma original.
  * Gemini traducirá automáticamente al idioma solicitado.
  */
-async function searchStores(location) {
+async function searchStores(location, userLocation) {
   const client = getSupabaseClient();
   if (!client) return [];
 
   let dbQuery = client.from('stores').select('*');
 
-  if (location) {
-    dbQuery = dbQuery.or(`city.ilike.%${location}%,address.ilike.%${location}%,name.ilike.%${location}%`);
+  let searchLocation = location;
+  
+  // Si no hay ubicación explícita pero tenemos la del usuario, intentamos usar su ciudad/región
+  if (!searchLocation && userLocation && userLocation.address) {
+      // Priorizamos la ciudad o la región
+      searchLocation = userLocation.address.city || userLocation.address.region || userLocation.address.subregion;
+      console.log(`[Catalog] Usando ubicación del usuario: ${searchLocation}`);
+  }
+
+  if (searchLocation) {
+    dbQuery = dbQuery.or(`city.ilike.%${searchLocation}%,address.ilike.%${searchLocation}%,name.ilike.%${searchLocation}%`);
   }
 
   const { data, error } = await dbQuery.limit(5);
@@ -149,6 +158,9 @@ async function searchStores(location) {
     console.error('Error buscando tiendas:', error);
     return [];
   }
+  
+  // Si tenemos lat/long en la base de datos y en el usuario, podríamos calcular distancias aquí
+  // Pero por ahora solo devolvemos los resultados filtrados por texto
   return data;
 }
 

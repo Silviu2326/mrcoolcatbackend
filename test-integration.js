@@ -4,7 +4,7 @@ const { searchProducts, getFullMenu, searchEvents, searchStores, searchCharacter
 const { listCharacters } = require('./src/characters'); // Necesario para que funcione el servicio en local
 
 // Configuración idéntica al servidor
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3-flash-preview';
 const tools = [
   {
     function_declarations: [

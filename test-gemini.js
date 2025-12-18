@@ -5,7 +5,7 @@ async function testGemini() {
   console.log('--- TEST DE CONEXIÓN GEMINI FINAL ---');
   
   const apiKey = process.env.GEMINI_API_KEY;
-  const modelName = "gemini-2.5-flash"; 
+  const modelName = "gemini-3-flash-preview"; 
 
   console.log(`🔑 Usando modelo: ${modelName}`);
 

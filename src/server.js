@@ -20,7 +20,7 @@ const {
 } = require('./services/catalogService');
 
 const PORT = process.env.PORT || 3000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
 const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2';
 const DEFAULT_TRANSCRIPTION_LANGUAGE = process.env.TRANSCRIPTION_LANGUAGE || 'es-ES';
 const DEFAULT_SAMPLE_RATE = Number(process.env.TRANSCRIPTION_SAMPLE_RATE) || 16000;
@@ -115,6 +115,7 @@ function getTools(language = 'es') {
   const i18n = toolDescriptions[language] || toolDescriptions.es;
 
   return [
+    { googleSearch: {} },
     {
       function_declarations: [
         {
@@ -184,9 +185,9 @@ const functionsMap = {
     console.log(`[Tool] Buscando eventos: ${query || 'todos'}`);
     return await searchEvents(query);
   },
-  searchStores: async ({ location }) => {
-    console.log(`[Tool] Buscando tiendas en: ${location || 'todas partes'}`);
-    return await searchStores(location);
+  searchStores: async ({ location, userLocation }) => {
+    console.log(`[Tool] Buscando tiendas en: ${location || 'ubicación usuario'}`);
+    return await searchStores(location, userLocation);
   },
   getCharacterInfo: async ({ name }) => {
     console.log(`[Tool] Buscando info personaje: ${name}`);
@@ -251,7 +252,8 @@ function buildSystemInstruction(character, language = 'es') {
         '2. Mantén la coherencia con tu personalidad. Nunca digas que eres una IA.',
         '3. Tienes acceso al inventario (base de datos) para buscar cervezas, eventos o tiendas si te preguntan.',
         '4. Si te preguntan por otros personajes, responde según lo que tú sabes de ellos o usa la herramienta de búsqueda de personajes.',
-        '5. Sé breve y conversacional, como en un chat o hablando en un bar.',
+        '5. Si te preguntan algo que no sabes o que no está en la base de datos, PUEDES BUSCAR EN INTERNET usando la herramienta de búsqueda.',
+        '6. Sé breve y conversacional, como en un chat o hablando en un bar.',
       ]
     },
     en: {
@@ -268,7 +270,8 @@ function buildSystemInstruction(character, language = 'es') {
         '2. Stay consistent with your personality. Never say you are an AI.',
         '3. You have access to the inventory (database) to search for beers, events or stores if asked.',
         '4. If asked about other characters, respond based on what you know about them or use the character search tool.',
-        '5. Be brief and conversational, like chatting or talking at a bar.',
+        '5. If you are asked something you don\'t know or that is not in the database, YOU CAN SEARCH THE INTERNET using the search tool.',
+        '6. Be brief and conversational, like chatting or talking at a bar.',
       ]
     }
   };
@@ -311,7 +314,7 @@ function mapHistory(history = []) {
 }
 
 // --- LÓGICA DE GENERACIÓN CON FUNCTION CALLING ---
-async function generateCharacterReply({ character, message, history, language = 'es' }) {
+async function generateCharacterReply({ character, message, history, language = 'es', userLocation }) {
   const genAI = ensureGeminiClient();
   const systemInstruction = buildSystemInstruction(character, language);
   const chatHistory = mapHistory(history);
@@ -326,7 +329,14 @@ async function generateCharacterReply({ character, message, history, language = 
   const chat = model.startChat({ history: chatHistory });
 
   // 1. Enviamos el mensaje del usuario
-  let result = await chat.sendMessage(message);
+  // Si tenemos ubicación, la añadimos al contexto del mensaje
+  let finalMessage = message;
+  if (userLocation) {
+    const locationContext = `\n[Contexto del Sistema: La ubicación actual del usuario es: Latitud ${userLocation.latitude}, Longitud ${userLocation.longitude}. Usa esta información si pregunta por tiendas cercanas.]`;
+    finalMessage += locationContext;
+  }
+
+  let result = await chat.sendMessage(finalMessage);
   let response = result.response;
   let functionCalls = response.functionCalls();
 
@@ -336,8 +346,14 @@ async function generateCharacterReply({ character, message, history, language = 
     const { name, args } = call;
 
     if (functionsMap[name]) {
+      // Inyectamos userLocation en los argumentos si la herramienta es searchStores
+      let finalArgs = args;
+      if (name === 'searchStores' && userLocation) {
+          finalArgs = { ...args, userLocation };
+      }
+
       // Ejecutamos la función real (consulta a Supabase)
-      const functionResult = await functionsMap[name](args);
+      const functionResult = await functionsMap[name](finalArgs);
 
       // Enviamos el resultado de vuelta a Gemini
       result = await chat.sendMessage([{
@@ -356,6 +372,10 @@ async function generateCharacterReply({ character, message, history, language = 
 
   // 3. Obtenemos el texto final
   const responseText = response.text();
+
+  if (response.candidates?.[0]?.groundingMetadata) {
+    console.log('[Search] 🌍 Información buscada en internet.');
+  }
 
   if (!responseText) {
     throw new Error('Sin texto en la respuesta de Gemini');
@@ -423,6 +443,7 @@ function setupVoiceWebSocket(socket) {
     let currentLanguage = DEFAULT_LANGUAGE;
     let currentEncoding = 'LINEAR16';
     let returnAudio = true;
+    let userLocation = null;
   
     function cleanup() {
       if (closed) return;
@@ -507,6 +528,7 @@ function setupVoiceWebSocket(socket) {
           message: transcript,
           history,
           language: currentLanguage,
+          userLocation,
         });
   
         history.push({ role: 'model', content: replyText });
@@ -571,7 +593,7 @@ function setupVoiceWebSocket(socket) {
           return;
         }
   
-        const { characterId, history: initialHistory, language, languageCode, sampleRateHertz, encoding, returnAudio: shouldReturnAudio } = payload;
+        const { characterId, history: initialHistory, language, languageCode, sampleRateHertz, encoding, returnAudio: shouldReturnAudio, userLocation: location } = payload;
         if (!characterId) {
           sendWsEvent(socket, 'error', { message: 'Falta characterId en el mensaje de inicio.' });
           return;
@@ -590,6 +612,11 @@ function setupVoiceWebSocket(socket) {
         // Si se especifica returnAudio en el payload, lo usamos. Si no, por defecto es true.
         if (typeof shouldReturnAudio !== 'undefined') {
             returnAudio = shouldReturnAudio;
+        }
+
+        if (location) {
+            userLocation = location;
+            console.log('📍 [WS] Ubicación recibida:', userLocation);
         }
   
         const selected = getCharacterById(characterId, currentLanguage);
@@ -669,7 +696,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/chat', async (req, res) => {
-  const { characterId, message, history, returnAudio, language = DEFAULT_LANGUAGE } = req.body || {};
+  const { characterId, message, history, returnAudio, language = DEFAULT_LANGUAGE, userLocation } = req.body || {};
 
   if (!characterId || !message) {
     return res.status(400).json({
@@ -697,6 +724,7 @@ app.post('/chat', async (req, res) => {
       message,
       history,
       language,
+      userLocation,
     });
 
     // Si se solicita audio, generar y enviar el stream de audio
