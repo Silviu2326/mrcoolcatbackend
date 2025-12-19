@@ -19,7 +19,7 @@ const characters = {
     },
     voice: {
       elevenLabsVoiceId: 'Ma1cqEdPvd6KwR3n13iY', // Cool Cat
-      stability: 0.35,
+      stability: 0.5,
       similarityBoost: 0.7,
       style: 0.6,
       description: {
@@ -48,7 +48,7 @@ const characters = {
     },
     voice: {
       elevenLabsVoiceId: '4OKuvJhP8Xrj3wJ5DUf9', // Buck the dog
-      stability: 0.25,
+      stability: 0.5,
       similarityBoost: 0.8,
       style: 0.4,
       description: {
@@ -164,7 +164,7 @@ const characters = {
     },
     voice: {
       elevenLabsVoiceId: 'rOI1yQjNo6oTjtTD8HGp', // candela
-      stability: 0.3,
+      stability: 0.45,
       similarityBoost: 0.9,
       style: 0.85,
       description: {
