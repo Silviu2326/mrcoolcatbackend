@@ -81,8 +81,8 @@ function getTools(language = 'es') {
         query: "Tipo de evento o fecha aproximada (opcional)."
       },
       searchStores: {
-        description: "Busca dónde comprar cerveza o ubicación de bares. Úsala si preguntan 'dónde está el bar', 'dónde comprar', 'ubicación'.",
-        location: "Ciudad o zona mencionada por el usuario."
+        description: "Busca dónde comprar cerveza o ubicación de bares. IMPORTANTE: Si el usuario dice 'barrio', 'zona', 'por aquí' o 'cerca', NO pongas nada en location (null) para usar su GPS.",
+        location: "Ciudad o zona explícita (ej: 'Alicante'). Dejar NULL/VACÍO si es 'mi zona', 'el barrio', 'por aquí'."
       },
       getCharacterInfo: {
         description: "Obtiene información sobre otros personajes del universo. Úsala si el usuario pregunta 'quién es Buck', 'háblame de La Catira', etc.",
@@ -102,8 +102,8 @@ function getTools(language = 'es') {
         query: "Type of event or approximate date (optional)."
       },
       searchStores: {
-        description: "Search for where to buy beer or bar locations. Use it if they ask 'where is the bar', 'where to buy', 'location'.",
-        location: "City or area mentioned by the user."
+        description: "Search for where to buy beer or bar locations. IMPORTANT: If user says 'neighborhood', 'area', 'around here' or 'nearby', leave location EMPTY (null) to use their GPS.",
+        location: "City or specific area (e.g. 'Alicante'). Leave NULL/EMPTY if it is 'my area', 'the neighborhood', 'around here'."
       },
       getCharacterInfo: {
         description: "Gets information about other characters in the universe. Use it if the user asks 'who is Buck', 'tell me about La Catira', etc.",
