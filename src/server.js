@@ -11,16 +11,16 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { getCharacterById, listCharacters } = require('./characters');
-const { 
-  searchProducts, 
-  getFullMenu, 
-  searchEvents, 
-  searchStores, 
-  searchCharactersInfo 
+const {
+  searchProducts,
+  getFullMenu,
+  searchEvents,
+  searchStores,
+  searchCharactersInfo
 } = require('./services/catalogService');
 
 const PORT = process.env.PORT || 3000;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const ELEVENLABS_MODEL = process.env.ELEVENLABS_MODEL || 'eleven_turbo_v2_5';
 const DEFAULT_TRANSCRIPTION_LANGUAGE = process.env.TRANSCRIPTION_LANGUAGE || 'es-ES';
 const DEFAULT_SAMPLE_RATE = Number(process.env.TRANSCRIPTION_SAMPLE_RATE) || 16000;
@@ -312,7 +312,7 @@ function mapHistory(history = []) {
 
 // --- CLASIFICACIÓN DE INTENCIÓN (ROUTER) ---
 async function classifyIntent(message) {
-  const routerModel = ensureGeminiClient().getGenerativeModel({ 
+  const routerModel = ensureGeminiClient().getGenerativeModel({
     model: 'gemini-2.0-flash-lite-preview-02-05',
     systemInstruction: `You are a router. Analyze the user message and output only ONE word:
     - SEARCH: If the user asks for real-time news, weather, sports scores, general world facts not related to the bar, or explicitly asks to search the web.
@@ -336,7 +336,7 @@ async function generateCharacterReply({ character, message, history, language = 
   const genAI = ensureGeminiClient();
   const systemInstruction = buildSystemInstruction(character, language);
   const chatHistory = mapHistory(history);
-  
+
   // 1. Router Step
   const intent = await classifyIntent(message);
   console.log(`[Router] Intent detected: ${intent}`);
@@ -351,7 +351,7 @@ async function generateCharacterReply({ character, message, history, language = 
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
     systemInstruction,
-    tools: toolsToUse, 
+    tools: toolsToUse,
   });
 
   const chat = model.startChat({ history: chatHistory });
@@ -366,37 +366,37 @@ async function generateCharacterReply({ character, message, history, language = 
 
   let result = await chat.sendMessage(finalMessage);
   let response = result.response;
-  
+
   // Solo procesamos function calls si estamos en modo INTERNAL (que tiene las tools de funciones)
   if (intent === 'INTERNAL') {
-      let functionCalls = response.functionCalls();
+    let functionCalls = response.functionCalls();
 
-      // 3. Loop de herramientas
-      while (functionCalls && functionCalls.length > 0) {
-        const call = functionCalls[0];
-        const { name, args } = call;
+    // 3. Loop de herramientas
+    while (functionCalls && functionCalls.length > 0) {
+      const call = functionCalls[0];
+      const { name, args } = call;
 
-        if (functionsMap[name]) {
-          let finalArgs = args;
-          if (name === 'searchStores' && userLocation) {
-              finalArgs = { ...args, userLocation };
-          }
-
-          const functionResult = await functionsMap[name](finalArgs);
-
-          result = await chat.sendMessage([{
-            functionResponse: {
-              name: name,
-              response: { result: functionResult }
-            }
-          }]);
-
-          response = result.response;
-          functionCalls = response.functionCalls();
-        } else {
-          break;
+      if (functionsMap[name]) {
+        let finalArgs = args;
+        if (name === 'searchStores' && userLocation) {
+          finalArgs = { ...args, userLocation };
         }
+
+        const functionResult = await functionsMap[name](finalArgs);
+
+        result = await chat.sendMessage([{
+          functionResponse: {
+            name: name,
+            response: { result: functionResult }
+          }
+        }]);
+
+        response = result.response;
+        functionCalls = response.functionCalls();
+      } else {
+        break;
       }
+    }
   }
 
   // 4. Obtenemos el texto final
@@ -462,233 +462,233 @@ function sendWsEvent(socket, type, payload = {}) {
 }
 
 function setupVoiceWebSocket(socket) {
-    let character = null;
-    let history = [];
-    let speechStream = null;
-    let processingReply = false;
-    let closed = false;
-    let speechLanguage = DEFAULT_TRANSCRIPTION_LANGUAGE;
-    let sampleRate = DEFAULT_SAMPLE_RATE;
-    let currentLanguage = DEFAULT_LANGUAGE;
-    let currentEncoding = 'LINEAR16';
-    let returnAudio = true;
-    let userLocation = null;
-  
-    function cleanup() {
-      if (closed) return;
-      closed = true;
+  let character = null;
+  let history = [];
+  let speechStream = null;
+  let processingReply = false;
+  let closed = false;
+  let speechLanguage = DEFAULT_TRANSCRIPTION_LANGUAGE;
+  let sampleRate = DEFAULT_SAMPLE_RATE;
+  let currentLanguage = DEFAULT_LANGUAGE;
+  let currentEncoding = 'LINEAR16';
+  let returnAudio = true;
+  let userLocation = null;
+
+  function cleanup() {
+    if (closed) return;
+    closed = true;
+    if (speechStream) {
+      speechStream.destroy();
+      speechStream = null;
+    }
+  }
+
+  socket.on('close', cleanup);
+  socket.on('error', (err) => {
+    console.error('[ws-error]', err);
+    cleanup();
+  });
+
+  function startSpeechStream(encoding = 'LINEAR16') {
+    try {
+      const client = ensureSpeechClient();
+      speechStream = client
+        .streamingRecognize({
+          config: {
+            encoding: encoding,
+            sampleRateHertz: sampleRate,
+            languageCode: speechLanguage,
+            enableAutomaticPunctuation: true,
+            model: 'latest_long',
+          },
+          interimResults: true,
+        })
+        .on('error', (error) => {
+          console.error('[speech-error]', error);
+          // Don't close socket on speech error, just notify and reset stream
+          sendWsEvent(socket, 'error', {
+            message: 'Error en el servicio de transcripción. Intenta de nuevo.',
+            details: error.message,
+          });
+          if (speechStream) {
+            speechStream.destroy();
+            speechStream = null;
+          }
+        })
+        .on('data', (data) => {
+          if (!data || !data.results) return;
+          data.results.forEach((result) => {
+            const transcript = result.alternatives?.[0]?.transcript?.trim();
+            if (!transcript) return;
+
+            if (result.isFinal) {
+              sendWsEvent(socket, 'transcript_final', { text: transcript });
+              history.push({ role: 'user', content: transcript });
+              handleFinalTranscript(transcript).catch((error) => {
+                console.error('[voice-reply-error]', error);
+                sendWsEvent(socket, 'error', {
+                  message: 'No se pudo generar la respuesta del personaje.',
+                  details: error.message,
+                });
+              });
+            } else {
+              sendWsEvent(socket, 'transcript_partial', { text: transcript });
+            }
+          });
+        });
+    } catch (error) {
+      console.error('[speech-init-error]', error);
+      sendWsEvent(socket, 'error', {
+        message: 'No se pudo iniciar la transcripción.',
+        details: error.message,
+      });
+      // socket.close(1011, 'speech-init-error'); // Don't close socket, allow retry
+    }
+  }
+
+  async function handleFinalTranscript(transcript) {
+    if (processingReply) return;
+    processingReply = true;
+    sendWsEvent(socket, 'assistant_thinking');
+
+    try {
+      const replyText = await generateCharacterReply({
+        character,
+        message: transcript,
+        history,
+        language: currentLanguage,
+        userLocation,
+      });
+
+      history.push({ role: 'model', content: replyText });
+      sendWsEvent(socket, 'reply_text', { text: replyText });
+
+      if (returnAudio) {
+        const audioStream = await synthesizeVoice(character, replyText);
+        sendWsEvent(socket, 'reply_audio_start', { format: 'audio/mpeg' });
+        for await (const chunk of audioStream) {
+          if (socket.readyState !== socket.OPEN) break;
+          socket.send(chunk, { binary: true });
+        }
+        sendWsEvent(socket, 'reply_audio_end');
+      }
+    } finally {
+      processingReply = false;
+    }
+  }
+
+  socket.on('message', async (data, isBinary) => {
+    if (closed) return;
+
+    if (isBinary) {
+      if (!speechStream) {
+        // Si no hay stream pero tenemos sesión (character), reiniciamos el stream
+        if (character) {
+          console.log('🔄 Reiniciando stream de audio...');
+          startSpeechStream(currentEncoding);
+        } else {
+          sendWsEvent(socket, 'error', {
+            message: 'Debes enviar un mensaje de inicio antes del audio.',
+          });
+          return;
+        }
+      }
+      speechStream.write(data);
+      return;
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(data.toString());
+    } catch (error) {
+      sendWsEvent(socket, 'error', { message: 'Mensaje JSON inválido.' });
+      return;
+    }
+
+    const { type } = payload || {};
+
+    if (type === 'commit') {
       if (speechStream) {
-        speechStream.destroy();
+        console.log('📝 Commit de audio recibido. Finalizando stream...');
+        speechStream.end();
         speechStream = null;
       }
+      return;
     }
-  
-    socket.on('close', cleanup);
-    socket.on('error', (err) => {
-      console.error('[ws-error]', err);
-      cleanup();
-    });
-  
-    function startSpeechStream(encoding = 'LINEAR16') {
-      try {
-        const client = ensureSpeechClient();
-        speechStream = client
-          .streamingRecognize({ 
-            config: {
-              encoding: encoding,
-              sampleRateHertz: sampleRate,
-              languageCode: speechLanguage,
-              enableAutomaticPunctuation: true,
-              model: 'latest_long',
-            },
-            interimResults: true,
-          })
-          .on('error', (error) => {
-            console.error('[speech-error]', error);
-            // Don't close socket on speech error, just notify and reset stream
-            sendWsEvent(socket, 'error', {
-              message: 'Error en el servicio de transcripción. Intenta de nuevo.',
-              details: error.message,
-            });
-            if (speechStream) {
-              speechStream.destroy();
-              speechStream = null;
-            }
-          })
-          .on('data', (data) => {
-            if (!data || !data.results) return;
-            data.results.forEach((result) => {
-              const transcript = result.alternatives?.[0]?.transcript?.trim();
-              if (!transcript) return;
-  
-              if (result.isFinal) {
-                sendWsEvent(socket, 'transcript_final', { text: transcript });
-                history.push({ role: 'user', content: transcript });
-                handleFinalTranscript(transcript).catch((error) => {
-                  console.error('[voice-reply-error]', error);
-                  sendWsEvent(socket, 'error', {
-                    message: 'No se pudo generar la respuesta del personaje.',
-                    details: error.message,
-                  });
-                });
-              } else {
-                sendWsEvent(socket, 'transcript_partial', { text: transcript });
-              }
-            });
-          });
-      } catch (error) {
-        console.error('[speech-init-error]', error);
+
+    if (type === 'start') {
+      if (speechStream) {
+        sendWsEvent(socket, 'error', { message: 'La sesión ya fue inicializada.' });
+        return;
+      }
+
+      const { characterId, history: initialHistory, language, languageCode, sampleRateHertz, encoding, returnAudio: shouldReturnAudio, userLocation: location } = payload;
+      if (!characterId) {
+        sendWsEvent(socket, 'error', { message: 'Falta characterId en el mensaje de inicio.' });
+        return;
+      }
+
+      // Validar y establecer el idioma
+      const requestedLanguage = language || DEFAULT_LANGUAGE;
+      if (!SUPPORTED_LANGUAGES[requestedLanguage]) {
         sendWsEvent(socket, 'error', {
-          message: 'No se pudo iniciar la transcripción.',
-          details: error.message,
+          message: `Idioma no soportado. Idiomas disponibles: ${Object.keys(SUPPORTED_LANGUAGES).join(', ')}`
         });
-        // socket.close(1011, 'speech-init-error'); // Don't close socket, allow retry
-      }
-    }
-  
-    async function handleFinalTranscript(transcript) {
-      if (processingReply) return;
-      processingReply = true;
-      sendWsEvent(socket, 'assistant_thinking');
-  
-      try {
-        const replyText = await generateCharacterReply({
-          character,
-          message: transcript,
-          history,
-          language: currentLanguage,
-          userLocation,
-        });
-  
-        history.push({ role: 'model', content: replyText });
-        sendWsEvent(socket, 'reply_text', { text: replyText });
-  
-        if (returnAudio) {
-            const audioStream = await synthesizeVoice(character, replyText);
-            sendWsEvent(socket, 'reply_audio_start', { format: 'audio/mpeg' });
-            for await (const chunk of audioStream) {
-              if (socket.readyState !== socket.OPEN) break;
-              socket.send(chunk, { binary: true });
-            }
-            sendWsEvent(socket, 'reply_audio_end');
-        }
-      } finally {
-        processingReply = false;
-      }
-    }
-  
-    socket.on('message', async (data, isBinary) => {
-      if (closed) return;
-  
-      if (isBinary) {
-        if (!speechStream) {
-          // Si no hay stream pero tenemos sesión (character), reiniciamos el stream
-          if (character) {
-               console.log('🔄 Reiniciando stream de audio...');
-               startSpeechStream(currentEncoding);
-          } else {
-              sendWsEvent(socket, 'error', {
-              message: 'Debes enviar un mensaje de inicio antes del audio.',
-              });
-              return;
-          }
-        }
-        speechStream.write(data);
-        return;
-      }
-  
-      let payload;
-      try {
-        payload = JSON.parse(data.toString());
-      } catch (error) {
-        sendWsEvent(socket, 'error', { message: 'Mensaje JSON inválido.' });
-        return;
-      }
-  
-      const { type } = payload || {};
-      
-      if (type === 'commit') {
-          if (speechStream) {
-              console.log('📝 Commit de audio recibido. Finalizando stream...');
-              speechStream.end();
-              speechStream = null;
-          }
-          return;
-      }
-  
-      if (type === 'start') {
-        if (speechStream) {
-          sendWsEvent(socket, 'error', { message: 'La sesión ya fue inicializada.' });
-          return;
-        }
-  
-        const { characterId, history: initialHistory, language, languageCode, sampleRateHertz, encoding, returnAudio: shouldReturnAudio, userLocation: location } = payload;
-        if (!characterId) {
-          sendWsEvent(socket, 'error', { message: 'Falta characterId en el mensaje de inicio.' });
-          return;
-        }
-  
-        // Validar y establecer el idioma
-        const requestedLanguage = language || DEFAULT_LANGUAGE;
-        if (!SUPPORTED_LANGUAGES[requestedLanguage]) {
-          sendWsEvent(socket, 'error', {
-            message: `Idioma no soportado. Idiomas disponibles: ${Object.keys(SUPPORTED_LANGUAGES).join(', ')}`
-          });
-          return;
-        }
-  
-        currentLanguage = requestedLanguage;
-        // Si se especifica returnAudio en el payload, lo usamos. Si no, por defecto es true.
-        if (typeof shouldReturnAudio !== 'undefined') {
-            returnAudio = shouldReturnAudio;
-        }
-
-        if (location) {
-            userLocation = location;
-            console.log('📍 [WS] Ubicación recibida:', userLocation);
-        }
-  
-        const selected = getCharacterById(characterId, currentLanguage);
-        if (!selected) {
-          sendWsEvent(socket, 'error', { message: `Personaje ${characterId} no encontrado.` });
-          return;
-        }
-  
-        if (!selected.voice || !selected.voice.elevenLabsVoiceId) {
-          sendWsEvent(socket, 'error', {
-            message: `Personaje ${characterId} no tiene voz configurada.`, 
-          });
-          return;
-        }
-  
-        character = selected;
-        history = Array.isArray(initialHistory) ? [...initialHistory] : [];
-  
-        // Determinar languageCode para transcripción según el idioma si no se especifica
-        speechLanguage = languageCode || SUPPORTED_LANGUAGES[currentLanguage];
-        sampleRate = Number(sampleRateHertz) || DEFAULT_SAMPLE_RATE;
-        currentEncoding = encoding || 'LINEAR16';
-  
-        sendWsEvent(socket, 'ready', {
-          characterId: character.id,
-          language: currentLanguage,
-          languageCode: speechLanguage,
-          sampleRateHertz: sampleRate,
-          encoding: currentEncoding
-        });
-  
-        startSpeechStream(currentEncoding);
         return;
       }
 
-      if (type === 'config_update') {
-          const { returnAudio: shouldReturnAudio } = payload;
-          if (typeof shouldReturnAudio !== 'undefined') {
-              returnAudio = shouldReturnAudio;
-              console.log(`[WS] Config actualizada: returnAudio = ${returnAudio}`);
-          }
-          return;
+      currentLanguage = requestedLanguage;
+      // Si se especifica returnAudio en el payload, lo usamos. Si no, por defecto es true.
+      if (typeof shouldReturnAudio !== 'undefined') {
+        returnAudio = shouldReturnAudio;
       }
+
+      if (location) {
+        userLocation = location;
+        console.log('📍 [WS] Ubicación recibida:', userLocation);
+      }
+
+      const selected = getCharacterById(characterId, currentLanguage);
+      if (!selected) {
+        sendWsEvent(socket, 'error', { message: `Personaje ${characterId} no encontrado.` });
+        return;
+      }
+
+      if (!selected.voice || !selected.voice.elevenLabsVoiceId) {
+        sendWsEvent(socket, 'error', {
+          message: `Personaje ${characterId} no tiene voz configurada.`,
+        });
+        return;
+      }
+
+      character = selected;
+      history = Array.isArray(initialHistory) ? [...initialHistory] : [];
+
+      // Determinar languageCode para transcripción según el idioma si no se especifica
+      speechLanguage = languageCode || SUPPORTED_LANGUAGES[currentLanguage];
+      sampleRate = Number(sampleRateHertz) || DEFAULT_SAMPLE_RATE;
+      currentEncoding = encoding || 'LINEAR16';
+
+      sendWsEvent(socket, 'ready', {
+        characterId: character.id,
+        language: currentLanguage,
+        languageCode: speechLanguage,
+        sampleRateHertz: sampleRate,
+        encoding: currentEncoding
+      });
+
+      startSpeechStream(currentEncoding);
+      return;
+    }
+
+    if (type === 'config_update') {
+      const { returnAudio: shouldReturnAudio } = payload;
+      if (typeof shouldReturnAudio !== 'undefined') {
+        returnAudio = shouldReturnAudio;
+        console.log(`[WS] Config actualizada: returnAudio = ${returnAudio}`);
+      }
+      return;
+    }
     if (type === 'stop') {
       if (speechStream) {
         speechStream.end();
