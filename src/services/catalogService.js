@@ -126,9 +126,59 @@ async function searchEvents(query) {
   return data;
 }
 
+// --- HELPER FUNCTIONS FOR GEOLOCATION ---
+
+function extractCoordinatesFromUrl(url) {
+  if (!url) return null;
+
+  // Formatos comunes de Google Maps:
+  // .../@38.3420936,-0.495882,17z...
+  // ...?q=38.3420936,-0.495882...
+
+  try {
+    const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (atMatch) {
+      return {
+        latitude: parseFloat(atMatch[1]),
+        longitude: parseFloat(atMatch[2])
+      };
+    }
+
+    const qMatch = url.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (qMatch) {
+      return {
+        latitude: parseFloat(qMatch[1]),
+        longitude: parseFloat(qMatch[2])
+      };
+    }
+  } catch (e) {
+    console.error(`Error parsing coordinates from URL: ${url}`, e);
+  }
+
+  return null;
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const d = R * c; // Distance in km
+  return d;
+}
+
+function deg2rad(deg) {
+  return deg * (Math.PI / 180);
+}
+
 /**
  * Busca tiendas o bares.
  * @param {string} location - Ciudad o zona.
+ * @param {object} userLocation - { latitude, longitude } del usuario.
  *
  * Nota: Los datos se retornan en su idioma original.
  * Gemini traducirá automáticamente al idioma solicitado.
@@ -137,15 +187,64 @@ async function searchStores(location, userLocation) {
   const client = getSupabaseClient();
   if (!client) return [];
 
-  let dbQuery = client.from('stores').select('*');
+  // 1. Si NO Hay término de búsqueda explícito pero SÍ ubicación de usuario,
+  // hacemos búsqueda por cercanía (Geospatial)
+  if (!location && userLocation && userLocation.latitude && userLocation.longitude) {
+    console.log('[Catalog] 📍 Búsqueda geoespacial iniciada.');
 
+    // Traemos todas las tiendas (o un límite razonable si son muchas)
+    const { data, error } = await client.from('stores').select('*');
+
+    if (error) {
+      console.error('Error fetching all stores for geo search:', error);
+      return [];
+    }
+
+    // Calculamos distancias
+    const storesWithDist = data.map(store => {
+      let coords = null;
+
+      // Intentamos sacar coords de lat/long columnas si existen, o del URL
+      if (store.latitude && store.longitude) {
+        coords = { latitude: store.latitude, longitude: store.longitude };
+      } else if (store.google_maps_url) {
+        coords = extractCoordinatesFromUrl(store.google_maps_url);
+      }
+
+      if (coords) {
+        const dist = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          coords.latitude,
+          coords.longitude
+        );
+        return { ...store, _distance: dist };
+      }
+      return { ...store, _distance: 999999 }; // Muy lejos si no tiene coords
+    });
+
+    // Ordenamos por distancia y cogemos top 5
+    const closest = storesWithDist
+      .sort((a, b) => a._distance - b._distance)
+      .slice(0, 5)
+      .filter(s => s._distance < 100); // Filtro opcional: solo a menos de 100km
+
+    console.log(`[Catalog] 📍 Encontradas ${closest.length} tiendas cercanas.`);
+    return closest.map(s => ({
+      ...s,
+      distance_info: `A ${s._distance.toFixed(2)} km` // Info extra para Gemini
+    }));
+  }
+
+  // 2. Fallback: Búsqueda por texto normal si hay término 'location'
+  let dbQuery = client.from('stores').select('*');
   let searchLocation = location;
-  
-  // Si no hay ubicación explícita pero tenemos la del usuario, intentamos usar su ciudad/región
+
+  // Si no hay ubicación explícita pero tenemos la del usuario (y no entramos en el if anterior),
+  // intentamos usar su ciudad/región como texto
   if (!searchLocation && userLocation && userLocation.address) {
-      // Priorizamos la ciudad o la región
-      searchLocation = userLocation.address.city || userLocation.address.region || userLocation.address.subregion;
-      console.log(`[Catalog] Usando ubicación del usuario: ${searchLocation}`);
+    searchLocation = userLocation.address.city || userLocation.address.region || userLocation.address.subregion;
+    console.log(`[Catalog] Usando ubicación del usuario (TEXTO): ${searchLocation}`);
   }
 
   if (searchLocation) {
@@ -158,9 +257,7 @@ async function searchStores(location, userLocation) {
     console.error('Error buscando tiendas:', error);
     return [];
   }
-  
-  // Si tenemos lat/long en la base de datos y en el usuario, podríamos calcular distancias aquí
-  // Pero por ahora solo devolvemos los resultados filtrados por texto
+
   return data;
 }
 
