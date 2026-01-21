@@ -128,15 +128,21 @@ async function searchEvents(query) {
 
 // --- HELPER FUNCTIONS FOR GEOLOCATION ---
 
+/**
+ * Extrae coordenadas de múltiples formatos de URLs de Google Maps.
+ * Formatos soportados:
+ * 1. /@38.3420936,-0.495882,17z
+ * 2. ?q=38.3420936,-0.495882
+ * 3. !3d38.3420936!4d-0.4933071 (formato de data)
+ * 4. place/.../@lat,lng
+ * 5. /maps?ll=lat,lng
+ */
 function extractCoordinatesFromUrl(url) {
   if (!url) return null;
 
-  // Formatos comunes de Google Maps:
-  // .../@38.3420936,-0.495882,17z...
-  // ...?q=38.3420936,-0.495882...
-
   try {
-    const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    // Formato 1: .../@38.3420936,-0.495882,17z...
+    const atMatch = url.match(/@(-?\d+\.?\d*),(-?\d+\.?\d*)/);
     if (atMatch) {
       return {
         latitude: parseFloat(atMatch[1]),
@@ -144,17 +150,126 @@ function extractCoordinatesFromUrl(url) {
       };
     }
 
-    const qMatch = url.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    // Formato 2: ...?q=38.3420936,-0.495882...
+    const qMatch = url.match(/q=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
     if (qMatch) {
       return {
         latitude: parseFloat(qMatch[1]),
         longitude: parseFloat(qMatch[2])
       };
     }
+
+    // Formato 3: !3d38.3420936!4d-0.4933071 (coordenadas en data de Google Maps)
+    const dataMatch = url.match(/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/);
+    if (dataMatch) {
+      return {
+        latitude: parseFloat(dataMatch[1]),
+        longitude: parseFloat(dataMatch[2])
+      };
+    }
+
+    // Formato 4: ll=lat,lng
+    const llMatch = url.match(/ll=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (llMatch) {
+      return {
+        latitude: parseFloat(llMatch[1]),
+        longitude: parseFloat(llMatch[2])
+      };
+    }
+
+    // Formato 5: center=lat,lng
+    const centerMatch = url.match(/center=(-?\d+\.?\d*),(-?\d+\.?\d*)/);
+    if (centerMatch) {
+      return {
+        latitude: parseFloat(centerMatch[1]),
+        longitude: parseFloat(centerMatch[2])
+      };
+    }
+
   } catch (e) {
     console.error(`Error parsing coordinates from URL: ${url}`, e);
   }
 
+  return null;
+}
+
+/**
+ * Geocodifica un nombre de lugar/barrio a coordenadas usando Google Geocoding API.
+ * Esto permite que el usuario pregunte por "bares en el barrio San Blas" y la IA
+ * pueda identificar la zona.
+ *
+ * @param {string} placeName - Nombre del lugar, barrio o zona (ej: "San Blas, Alicante")
+ * @returns {Promise<{latitude: number, longitude: number, formatted_address: string}|null>}
+ */
+async function geocodePlace(placeName) {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_GEOCODING_API_KEY;
+
+  if (!apiKey) {
+    console.warn('[Geocode] ⚠️ No hay GOOGLE_MAPS_API_KEY configurada. Geocodificación no disponible.');
+    return null;
+  }
+
+  try {
+    const encodedPlace = encodeURIComponent(placeName);
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedPlace}&key=${apiKey}&language=es`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const result = data.results[0];
+      console.log(`[Geocode] ✅ "${placeName}" -> ${result.formatted_address}`);
+      return {
+        latitude: result.geometry.location.lat,
+        longitude: result.geometry.location.lng,
+        formatted_address: result.formatted_address,
+        place_types: result.types // ej: ["neighborhood", "political"]
+      };
+    }
+
+    console.log(`[Geocode] ❌ No se encontró: "${placeName}"`);
+    return null;
+  } catch (error) {
+    console.error('[Geocode] Error:', error);
+    return null;
+  }
+}
+
+/**
+ * Detecta si un texto contiene referencias a zonas/barrios conocidos.
+ * Útil para mejorar búsquedas cuando el usuario menciona lugares específicos.
+ */
+const KNOWN_ZONES = {
+  // Alicante
+  'centro': { city: 'Alicante', area: 'Centro' },
+  'playa san juan': { city: 'Alicante', area: 'Playa San Juan' },
+  'san juan': { city: 'Alicante', area: 'San Juan' },
+  'benalua': { city: 'Alicante', area: 'Benalúa' },
+  'benalúa': { city: 'Alicante', area: 'Benalúa' },
+  'carolinas': { city: 'Alicante', area: 'Carolinas' },
+  'san blas': { city: 'Alicante', area: 'San Blas' },
+  'florida': { city: 'Alicante', area: 'Florida' },
+  'alipark': { city: 'Alicante', area: 'Alipark' },
+  'golf': { city: 'Alicante', area: 'Golf' },
+  'cabo huertas': { city: 'Alicante', area: 'Cabo de las Huertas' },
+  'albufereta': { city: 'Alicante', area: 'Albufereta' },
+  'san gabriel': { city: 'Alicante', area: 'San Gabriel' },
+  'babel': { city: 'Alicante', area: 'Babel' },
+  'pla': { city: 'Alicante', area: 'Pla del Bon Repòs' },
+  'explanada': { city: 'Alicante', area: 'Explanada' },
+  'puerto': { city: 'Alicante', area: 'Puerto' },
+  // Añade más zonas según tu área de operación
+};
+
+function detectZone(text) {
+  if (!text) return null;
+  const lowerText = text.toLowerCase();
+
+  for (const [key, zone] of Object.entries(KNOWN_ZONES)) {
+    if (lowerText.includes(key)) {
+      return zone;
+    }
+  }
   return null;
 }
 
@@ -176,8 +291,15 @@ function deg2rad(deg) {
 }
 
 /**
- * Busca tiendas o bares.
- * @param {string} location - Ciudad o zona.
+ * Busca tiendas o bares con inteligencia de ubicación mejorada.
+ *
+ * CAPACIDADES:
+ * 1. Búsqueda geoespacial por coordenadas del usuario
+ * 2. Geocodificación de nombres de barrios/zonas (ej: "San Blas", "Centro")
+ * 3. Detección de zonas conocidas en el texto
+ * 4. Búsqueda por texto como fallback
+ *
+ * @param {string} location - Ciudad, zona o barrio (ej: "San Blas", "cerca del puerto").
  * @param {object} userLocation - { latitude, longitude } del usuario.
  *
  * Nota: Los datos se retornan en su idioma original.
@@ -187,110 +309,246 @@ async function searchStores(location, userLocation) {
   const client = getSupabaseClient();
   if (!client) return [];
 
-  // 1. Si NO Hay término de búsqueda explícito pero SÍ ubicación de usuario,
-  // hacemos búsqueda por cercanía (Geospatial)
+  // --- ESTRATEGIA 1: Búsqueda geoespacial pura (usuario tiene coords, no menciona zona) ---
   if (!location && userLocation && userLocation.latitude && userLocation.longitude) {
-    console.log('[Catalog] 📍 Búsqueda geoespacial iniciada.');
+    console.log('[Catalog] 📍 Búsqueda geoespacial iniciada (coords del usuario).');
+    return await searchStoresByCoords(client, userLocation.latitude, userLocation.longitude);
+  }
 
-    // Traemos todas las tiendas (o un límite razonable si son muchas)
-    const { data, error } = await client.from('stores').select('*');
+  // --- ESTRATEGIA 2: Usuario menciona una zona/barrio ---
+  if (location) {
+    console.log(`[Catalog] 🔍 Analizando ubicación: "${location}"`);
 
-    if (error) {
-      console.error('Error fetching all stores for geo search:', error);
-      return [];
+    // 2a. Detectar zonas conocidas localmente (más rápido, sin API)
+    const knownZone = detectZone(location);
+    if (knownZone) {
+      console.log(`[Catalog] ✅ Zona conocida detectada: ${knownZone.area}, ${knownZone.city}`);
+
+      // Intentar geocodificar la zona conocida para búsqueda por cercanía
+      const geoResult = await geocodePlace(`${knownZone.area}, ${knownZone.city}, España`);
+      if (geoResult) {
+        console.log(`[Catalog] 📍 Geocodificada: ${geoResult.formatted_address}`);
+        const stores = await searchStoresByCoords(client, geoResult.latitude, geoResult.longitude, 10);
+        if (stores.length > 0) {
+          return stores.map(s => ({
+            ...s,
+            zone_info: `Zona: ${knownZone.area}`,
+            geocoded_address: geoResult.formatted_address
+          }));
+        }
+      }
+
+      // Fallback: búsqueda por texto de la zona
+      return await searchStoresByText(client, knownZone.area);
     }
 
-    // Calculamos distancias
-    const storesWithDist = data.map(store => {
-      let coords = null;
-
-      // Intentamos sacar coords de lat/long columnas si existen, o del URL
-      if (store.latitude && store.longitude) {
-        coords = { latitude: store.latitude, longitude: store.longitude };
-      } else if (store.google_maps_url) {
-        coords = extractCoordinatesFromUrl(store.google_maps_url);
+    // 2b. Si no es zona conocida, intentar geocodificar el texto libre
+    const geoResult = await geocodePlace(`${location}, España`);
+    if (geoResult) {
+      console.log(`[Catalog] 📍 Geocodificado "${location}": ${geoResult.formatted_address}`);
+      const stores = await searchStoresByCoords(client, geoResult.latitude, geoResult.longitude, 15);
+      if (stores.length > 0) {
+        return stores.map(s => ({
+          ...s,
+          geocoded_address: geoResult.formatted_address
+        }));
       }
+    }
 
-      if (coords) {
-        const dist = calculateDistance(
-          userLocation.latitude,
-          userLocation.longitude,
-          coords.latitude,
-          coords.longitude
-        );
-        return { ...store, _distance: dist };
-      }
-      return { ...store, _distance: 999999 }; // Muy lejos si no tiene coords
-    });
-
-    // Ordenamos por distancia y cogemos top 5
-    const closest = storesWithDist
-      .sort((a, b) => a._distance - b._distance)
-      .slice(0, 5)
-      .filter(s => s._distance < 100); // Filtro opcional: solo a menos de 100km
-
-    console.log(`[Catalog] 📍 Encontradas ${closest.length} tiendas cercanas.`);
-    return closest.map(s => ({
-      ...s,
-      distance_info: `A ${s._distance.toFixed(2)} km` // Info extra para Gemini
-    }));
+    // 2c. Fallback final: búsqueda por texto
+    console.log(`[Catalog] 📝 Búsqueda por texto: "${location}"`);
+    return await searchStoresByText(client, location);
   }
 
-  // 2. Fallback: Búsqueda por texto normal si hay término 'location'
-  let dbQuery = client.from('stores').select('*');
-  let searchLocation = location;
-
-  // Si no hay ubicación explícita pero tenemos la del usuario (y no entramos en el if anterior),
-  // intentamos usar su ciudad/región como texto
-  if (!searchLocation && userLocation && userLocation.address) {
-    searchLocation = userLocation.address.city || userLocation.address.region || userLocation.address.subregion;
-    console.log(`[Catalog] Usando ubicación del usuario (TEXTO): ${searchLocation}`);
-  }
-
-  if (searchLocation) {
-    dbQuery = dbQuery.or(`city.ilike.%${searchLocation}%,address.ilike.%${searchLocation}%,name.ilike.%${searchLocation}%`);
-  }
-
-  const { data, error } = await dbQuery.limit(5);
+  // --- ESTRATEGIA 3: Sin ubicación - devolver todas ordenadas ---
+  console.log('[Catalog] ⚠️ Sin ubicación, devolviendo tiendas generales.');
+  const { data, error } = await client.from('stores').select('*').limit(5);
 
   if (error) {
     console.error('Error buscando tiendas:', error);
     return [];
   }
 
-  return data;
+  return data.map(store => ({
+    ...store,
+    ...getStoreCategoryRules(store.category)
+  }));
 }
 
 /**
- * Busca información sobre los personajes (usando el archivo local, no BD).
- * @param {string} name - Nombre del personaje.
- *
- * Nota: Esta función retorna datos de personajes en español por defecto.
- * Gemini traducirá automáticamente la información al idioma solicitado.
- * Los personajes tienen versiones multiidioma disponibles, pero en este
- * contexto de búsqueda se usa el idioma por defecto para simplificar.
+ * Busca tiendas por cercanía a coordenadas específicas.
  */
-async function searchCharactersInfo(name) {
-  // Importamos aquí para evitar ciclos si fuera necesario, o usamos el módulo ya cargado en server.
-  // Como esto es un servicio, podemos requerir el archivo de personajes directamente.
-  const { listCharacters } = require('../characters');
+async function searchStoresByCoords(client, lat, lng, maxDistanceKm = 100) {
+  const { data, error } = await client.from('stores').select('*');
 
-  // Retornamos personajes en idioma por defecto (español)
-  // Gemini se encargará de traducir si el usuario está en otro idioma
-  const allChars = listCharacters('es');
+  if (error) {
+    console.error('Error fetching stores for geo search:', error);
+    return [];
+  }
 
-  if (!name) return allChars.map(c => ({ name: c.name, summary: c.summary }));
+  const storesWithDist = data.map(store => {
+    let coords = null;
 
-  const lowerName = name.toLowerCase();
-  return allChars.filter(c =>
-    c.name.toLowerCase().includes(lowerName) ||
-    c.summary.toLowerCase().includes(lowerName)
-  ).map(c => ({
-    name: c.name,
-    description: c.summary,
-    style: c.tone,
-    product: "Ver catálogo de cervezas para su producto asociado"
+    if (store.latitude && store.longitude) {
+      coords = { latitude: store.latitude, longitude: store.longitude };
+    } else if (store.google_maps_url) {
+      coords = extractCoordinatesFromUrl(store.google_maps_url);
+    }
+
+    if (coords) {
+      const dist = calculateDistance(lat, lng, coords.latitude, coords.longitude);
+      return { ...store, _distance: dist };
+    }
+    return { ...store, _distance: 999999 };
+  });
+
+  const closest = storesWithDist
+    .sort((a, b) => a._distance - b._distance)
+    .filter(s => s._distance < maxDistanceKm)
+    .slice(0, 5);
+
+  console.log(`[Catalog] 📍 Encontradas ${closest.length} tiendas cercanas (max ${maxDistanceKm}km).`);
+
+  return closest.map(s => ({
+    ...s,
+    distance_info: `A ${s._distance.toFixed(2)} km`,
+    ...getStoreCategoryRules(s.category)
   }));
+}
+
+/**
+ * Busca tiendas por coincidencia de texto.
+ */
+async function searchStoresByText(client, searchText) {
+  const { data, error } = await client
+    .from('stores')
+    .select('*')
+    .or(`city.ilike.%${searchText}%,address.ilike.%${searchText}%,name.ilike.%${searchText}%,zone.ilike.%${searchText}%`)
+    .limit(5);
+
+  if (error) {
+    console.error('Error buscando tiendas por texto:', error);
+    return [];
+  }
+
+  return data.map(store => ({
+    ...store,
+    ...getStoreCategoryRules(store.category)
+  }));
+}
+
+/**
+ * Define las reglas y acciones permitidas según la categoría del local.
+ */
+function getStoreCategoryRules(category) {
+  if (!category) return { allowed_actions: [], restrictions: "Sin información de categoría" };
+
+  const lowerCat = category.toLowerCase().trim();
+
+  // Normalización básica
+  let normalized = lowerCat;
+  if (lowerCat === 'bar') normalized = 'cafes / bars';
+
+  const rules = {
+    'pubs': {
+      allowed_actions: ["socializar", "beber", "música", "fiesta"],
+      restrictions: "Solo para mayores de 18."
+    },
+    'cafes / bars': {
+      allowed_actions: ["café", "beber", "tapas", "conversar"],
+      restrictions: "Ambiente más relajado."
+    },
+    'restaurants': {
+      allowed_actions: ["comer", "cenar", "beber", "celebraciones"],
+      restrictions: "Se recomienda reservar."
+    },
+    'supermercados': {
+      allowed_actions: ["comprar para llevar", "abastecimiento"],
+      restrictions: "ESTRICTAMENTE PROHIBIDO consumir en el local. Solo venta."
+    }
+  };
+
+  // Buscamos coincidencia parcial o directa
+  if (normalized.includes('supermercado')) return rules['supermercados'];
+  if (normalized.includes('restaurant')) return rules['restaurants'];
+  if (normalized.includes('pub')) return rules['pubs'];
+  if (normalized.includes('cafe') || normalized.includes('bar')) return rules['cafes / bars'];
+
+  // Default
+  return {
+    allowed_actions: ["visitar"],
+    restrictions: "Consultar en el local."
+  };
+}
+
+/**
+ * Busca información sobre los personajes de Cool Cat.
+ * @param {string} name - Nombre del personaje a buscar.
+ * @param {string} language - Idioma (es/en).
+ * @returns {Array} - Información del personaje encontrado.
+ */
+function searchCharactersInfo(name, language = 'es') {
+  // Importamos los personajes aquí para evitar dependencia circular
+  const { listCharacters, getCharacterById } = require('../characters');
+
+  if (!name) {
+    // Si no hay nombre, devolver lista de todos los personajes
+    return listCharacters(language);
+  }
+
+  const normalizedQuery = name.toLowerCase().trim();
+
+  // Mapeo de nombres y aliases para búsqueda flexible
+  const characterAliases = {
+    'gato': 'gatoCool',
+    'gato cool': 'gatoCool',
+    'el gato': 'gatoCool',
+    'cool cat': 'gatoCool',
+    'buck': 'buck',
+    'perro': 'buck',
+    'catira': 'catira',
+    'la catira': 'catira',
+    'rubia': 'catira',
+    'morena': 'morena',
+    'la morena': 'morena',
+    'sifrina': 'sifrina',
+    'la sifrina': 'sifrina',
+    'candela': 'candela',
+    'guajira': 'guajira',
+    'la guajira': 'guajira',
+    'medusa': 'medusa',
+    'medusa 0.0': 'medusa',
+    'medusa 0,0': 'medusa'
+  };
+
+  // Buscar coincidencia exacta primero
+  let characterId = characterAliases[normalizedQuery];
+
+  // Si no hay coincidencia exacta, buscar por inclusión
+  if (!characterId) {
+    for (const [alias, id] of Object.entries(characterAliases)) {
+      if (normalizedQuery.includes(alias) || alias.includes(normalizedQuery)) {
+        characterId = id;
+        break;
+      }
+    }
+  }
+
+  if (characterId) {
+    const character = getCharacterById(characterId, language);
+    if (character) {
+      return [character];
+    }
+  }
+
+  // Buscar en todos los personajes por coincidencia parcial
+  const allCharacters = listCharacters(language);
+  const matches = allCharacters.filter(char =>
+    char.name.toLowerCase().includes(normalizedQuery) ||
+    char.summary.toLowerCase().includes(normalizedQuery)
+  );
+
+  return matches.length > 0 ? matches : allCharacters;
 }
 
 module.exports = {
@@ -298,5 +556,9 @@ module.exports = {
   getFullMenu,
   searchEvents,
   searchStores,
-  searchCharactersInfo
+  searchCharactersInfo,
+  geocodePlace,
+  extractCoordinatesFromUrl,
+  detectZone,
+  KNOWN_ZONES
 };

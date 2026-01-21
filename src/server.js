@@ -81,8 +81,8 @@ function getTools(language = 'es') {
         query: "Tipo de evento o fecha aproximada (opcional)."
       },
       searchStores: {
-        description: "Busca dónde comprar cerveza o ubicación de bares. IMPORTANTE: Si el usuario dice 'barrio', 'zona', 'por aquí' o 'cerca', NO pongas nada en location (null) para usar su GPS.",
-        location: "Ciudad o zona explícita (ej: 'Alicante'). Dejar NULL/VACÍO si es 'mi zona', 'el barrio', 'por aquí'."
+        description: "Busca dónde comprar cerveza o bares cercanos. CAPACIDADES: 1) Si el usuario menciona un BARRIO o ZONA (ej: 'San Blas', 'Centro', 'Playa San Juan'), pasa ese nombre como 'location' - el sistema lo geocodificará automáticamente. 2) Si dice 'cerca de mí' o 'por aquí', deja location vacío y usará GPS. 3) Cada local tiene CATEGORÍA (Pub, Bar, Restaurante, Supermercado) con REGLAS. SUPERMERCADOS son SOLO para comprar (NO BEBER AHÍ).",
+        location: "Nombre del barrio, zona o ciudad (ej: 'San Blas', 'Centro', 'Benalúa', 'Alicante'). El sistema puede identificar barrios y convertirlos a coordenadas. Dejar VACÍO solo si el usuario dice 'cerca de mí' o 'por aquí' sin especificar zona."
       },
       getCharacterInfo: {
         description: "Obtiene información sobre otros personajes del universo. Úsala si el usuario pregunta 'quién es Buck', 'háblame de La Catira', etc.",
@@ -102,8 +102,8 @@ function getTools(language = 'es') {
         query: "Type of event or approximate date (optional)."
       },
       searchStores: {
-        description: "Search for where to buy beer or bar locations. IMPORTANT: If user says 'neighborhood', 'area', 'around here' or 'nearby', leave location EMPTY (null) to use their GPS.",
-        location: "City or specific area (e.g. 'Alicante'). Leave NULL/EMPTY if it is 'my area', 'the neighborhood', 'around here'."
+        description: "Search for nearby beer shops or bars. CAPABILITIES: 1) If user mentions a NEIGHBORHOOD or ZONE (e.g., 'San Blas', 'Downtown', 'Beach area'), pass that name as 'location' - the system will geocode it automatically. 2) If they say 'near me' or 'around here', leave location empty to use GPS. 3) Each place has a CATEGORY (Pub, Bar, Restaurant, Supermarket) with RULES. SUPERMARKETS are for BUYING ONLY (NO DRINKING).",
+        location: "Name of neighborhood, zone or city (e.g., 'San Blas', 'Downtown', 'Benalúa', 'Alicante'). The system can identify neighborhoods and convert them to coordinates. Leave EMPTY only if user says 'near me' without specifying a zone."
       },
       getCharacterInfo: {
         description: "Gets information about other characters in the universe. Use it if the user asks 'who is Buck', 'tell me about La Catira', etc.",
@@ -804,7 +804,297 @@ app.post('/chat', async (req, res) => {
   }
 });
 
+// --- VERIFICACIÓN DE LOGROS CON IA ---
+
+// Criterios de verificación por tipo de logro
+const ACHIEVEMENT_VERIFICATION_CRITERIA = {
+  'l1_iniciado_cervecero': {
+    name: 'Iniciado Cervecero',
+    description: 'Verificar que la foto muestra una cerveza Mr. Cool Cat',
+    criteria: [
+      'La imagen debe mostrar una cerveza (lata, botella o vaso)',
+      'Debe ser visible el logo o nombre "Mr. Cool Cat" o "Cool Cat"',
+      'La cerveza debe estar siendo consumida o presentada (no solo en estante de tienda)',
+    ],
+    requiredMatches: 2, // Al menos 2 de los 3 criterios deben cumplirse
+  },
+  'l1_explorador_estilos': {
+    name: 'Explorador de Estilos',
+    description: 'Verificar foto con múltiples estilos de cerveza',
+    criteria: [
+      'La imagen debe mostrar al menos 3 cervezas diferentes',
+      'Las cervezas deben ser de la marca Cool Cat',
+      'Las cervezas deben ser de estilos visualmente diferentes (colores, etiquetas)',
+    ],
+    requiredMatches: 2,
+  },
+  'l1_mr_cat_cervecero': {
+    name: 'Mr. Cat Cervecero',
+    description: 'Verificar foto con las 6 cervezas en un local',
+    criteria: [
+      'La imagen debe mostrar 6 cervezas diferentes',
+      'Las cervezas deben ser de la marca Cool Cat',
+      'El contexto debe parecer un bar o local (no una casa)',
+    ],
+    requiredMatches: 2,
+  },
+  'l1_cool_cat_master': {
+    name: 'Cool Cat Master',
+    description: 'Verificar foto de las 6 cervezas en 6 locales distintos (puede ser múltiples fotos)',
+    criteria: [
+      'La imagen debe mostrar cerveza Cool Cat',
+      'El contexto debe parecer un bar, restaurante o local comercial',
+      'La foto debe mostrar un ambiente diferente (para demostrar que es otro local)',
+    ],
+    requiredMatches: 2,
+  },
+  'l1_maestro_lupulo': {
+    name: 'Maestro del Lúpulo',
+    description: 'Verificar foto de cerveza para valoración',
+    criteria: [
+      'La imagen debe mostrar una cerveza Cool Cat claramente visible',
+      'La etiqueta o logo debe ser legible',
+      'La foto debe tener buena calidad para mostrar detalles',
+    ],
+    requiredMatches: 2,
+  },
+  'l2_fiestero_cool_cat': {
+    name: 'Fiestero Cool Cat',
+    description: 'Verificar foto grupal en evento Cool Cat',
+    criteria: [
+      'La imagen debe mostrar un grupo de personas (al menos 2)',
+      'Debe haber cervezas Cool Cat visibles en la foto',
+      'El contexto debe parecer un evento o fiesta (no ambiente casual)',
+    ],
+    requiredMatches: 2,
+  },
+  'l2_maestro_ceremonias': {
+    name: 'Maestro de Ceremonias',
+    description: 'Verificar asistencia a eventos Cool Cat (12 eventos en un año)',
+    criteria: [
+      'La imagen debe mostrar un evento o fiesta',
+      'Debe haber elementos de la marca Cool Cat visibles (carteles, vasos, decoración)',
+      'El contexto debe parecer un evento organizado (no reunión casual)',
+    ],
+    requiredMatches: 2,
+  },
+  'l2_celebrity_cat': {
+    name: 'Celebrity Cat',
+    description: 'Verificar foto con amigos bebiendo Cool Cat',
+    criteria: [
+      'La imagen debe mostrar personas con cervezas',
+      'Las cervezas deben ser de la marca Cool Cat',
+      'La foto debe estar en un local/bar (no en casa)',
+    ],
+    requiredMatches: 2,
+  },
+  'l2_banda_gato': {
+    name: 'La Banda del Gato',
+    description: 'Verificar foto grupal brindando con Cool Cat',
+    criteria: [
+      'La imagen debe mostrar al menos 5 personas',
+      'Las personas deben estar brindando o sosteniendo cervezas',
+      'Las cervezas deben ser Cool Cat',
+    ],
+    requiredMatches: 2,
+  },
+};
+
+// Criterio genérico para logros no definidos
+const DEFAULT_ACHIEVEMENT_CRITERIA = {
+  name: 'Logro Genérico',
+  description: 'Verificar que la foto está relacionada con cerveza Cool Cat',
+  criteria: [
+    'La imagen debe mostrar una cerveza',
+    'La cerveza debe ser de la marca Cool Cat (visible en logo o etiqueta)',
+  ],
+  requiredMatches: 1,
+};
+
+/**
+ * Analiza una imagen con Gemini Vision para verificar un logro
+ */
+async function verifyAchievementWithAI({ imageUrl, achievementId, userId }) {
+  console.log(`🔍 [verify-achievement] Verificando logro ${achievementId} para usuario ${userId}`);
+  console.log(`🖼️ [verify-achievement] URL de imagen: ${imageUrl}`);
+
+  const genAI = ensureGeminiClient();
+
+  // Obtener criterios para este logro
+  const achievementCriteria = ACHIEVEMENT_VERIFICATION_CRITERIA[achievementId] || DEFAULT_ACHIEVEMENT_CRITERIA;
+
+  // Construir prompt para verificación
+  const verificationPrompt = `
+Eres un sistema de verificación de logros para una aplicación de cerveza artesanal "Mr. Cool Cat".
+
+LOGRO A VERIFICAR: "${achievementCriteria.name}"
+DESCRIPCIÓN: ${achievementCriteria.description}
+
+CRITERIOS DE VERIFICACIÓN (debe cumplir al menos ${achievementCriteria.requiredMatches}):
+${achievementCriteria.criteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+
+INSTRUCCIONES:
+1. Analiza la imagen proporcionada
+2. Evalúa cada criterio individualmente
+3. Sé estricto pero justo - el usuario debe demostrar que realmente cumplió el logro
+4. Si la imagen es borrosa, no muestra lo requerido, o parece manipulada, rechaza
+
+RESPONDE EXACTAMENTE EN ESTE FORMATO JSON:
+{
+  "approved": true/false,
+  "confidence": 0.0-1.0,
+  "criteriaResults": [
+    {"criterion": "descripción del criterio", "met": true/false, "reason": "razón"},
+    ...
+  ],
+  "summary": "Resumen breve de la verificación",
+  "feedback": "Mensaje amigable para el usuario explicando el resultado"
+}
+`;
+
+  try {
+    // Descargar la imagen para enviarla a Gemini
+    console.log('📥 [verify-achievement] Descargando imagen...');
+    const imageResponse = await fetch(imageUrl);
+    if (!imageResponse.ok) {
+      throw new Error(`No se pudo descargar la imagen: ${imageResponse.status}`);
+    }
+
+    const imageBuffer = await imageResponse.arrayBuffer();
+    const base64Image = Buffer.from(imageBuffer).toString('base64');
+
+    // Determinar el tipo MIME
+    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+
+    console.log('🤖 [verify-achievement] Enviando a Gemini Vision...');
+
+    // Usar modelo con capacidades de visión
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: contentType,
+          data: base64Image,
+        },
+      },
+      { text: verificationPrompt },
+    ]);
+
+    const responseText = result.response.text();
+    console.log('📝 [verify-achievement] Respuesta de Gemini:', responseText);
+
+    // Parsear la respuesta JSON
+    // Extraer JSON del texto (puede venir con markdown)
+    let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('No se pudo extraer JSON de la respuesta');
+    }
+
+    const verification = JSON.parse(jsonMatch[0]);
+
+    return {
+      success: true,
+      verification: {
+        achievementId,
+        userId,
+        imageUrl,
+        ...verification,
+        verifiedAt: new Date().toISOString(),
+      },
+    };
+
+  } catch (error) {
+    console.error('❌ [verify-achievement] Error:', error);
+    return {
+      success: false,
+      error: error.message,
+      verification: {
+        achievementId,
+        userId,
+        imageUrl,
+        approved: false,
+        confidence: 0,
+        summary: 'Error durante la verificación',
+        feedback: 'Hubo un problema al verificar tu foto. Por favor, intenta de nuevo.',
+        verifiedAt: new Date().toISOString(),
+      },
+    };
+  }
+}
+
+/**
+ * Endpoint para verificar logros con IA
+ * POST /verify-achievement
+ */
+app.post('/verify-achievement', async (req, res) => {
+  const { userId, achievementId, imageUrl } = req.body || {};
+
+  // Validaciones
+  if (!userId) {
+    return res.status(400).json({ error: 'userId es requerido' });
+  }
+  if (!achievementId) {
+    return res.status(400).json({ error: 'achievementId es requerido' });
+  }
+  if (!imageUrl) {
+    return res.status(400).json({ error: 'imageUrl es requerido' });
+  }
+
+  console.log(`\n🎯 [API] Solicitud de verificación de logro:`);
+  console.log(`   - Usuario: ${userId}`);
+  console.log(`   - Logro: ${achievementId}`);
+  console.log(`   - Imagen: ${imageUrl.substring(0, 50)}...`);
+
+  try {
+    const result = await verifyAchievementWithAI({ imageUrl, achievementId, userId });
+
+    if (result.success && result.verification.approved) {
+      console.log(`✅ [API] Logro APROBADO para usuario ${userId}`);
+    } else {
+      console.log(`❌ [API] Logro NO APROBADO para usuario ${userId}`);
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    console.error('[verify-achievement-error]', error);
+    res.status(500).json({
+      error: 'Error al verificar el logro',
+      details: error.message,
+    });
+  }
+});
+
+/**
+ * Endpoint para obtener los criterios de un logro (útil para el frontend)
+ * GET /achievement-criteria/:achievementId
+ */
+app.get('/achievement-criteria/:achievementId', (req, res) => {
+  const { achievementId } = req.params;
+
+  const criteria = ACHIEVEMENT_VERIFICATION_CRITERIA[achievementId] || DEFAULT_ACHIEVEMENT_CRITERIA;
+
+  res.json({
+    achievementId,
+    ...criteria,
+  });
+});
+
+/**
+ * Endpoint para listar todos los logros con sus criterios
+ * GET /achievements-criteria
+ */
+app.get('/achievements-criteria', (req, res) => {
+  res.json(ACHIEVEMENT_VERIFICATION_CRITERIA);
+});
+
 // Start server
 server.listen(PORT, () => {
   console.log(`Servidor HTTP/WebSocket escuchando en http://localhost:${PORT}`);
+  console.log(`📋 Endpoints disponibles:`);
+  console.log(`   - POST /chat - Chat con personajes`);
+  console.log(`   - POST /verify-achievement - Verificar logros con IA`);
+  console.log(`   - GET /achievement-criteria/:id - Obtener criterios de un logro`);
+  console.log(`   - GET /achievements-criteria - Listar todos los criterios`);
 });
