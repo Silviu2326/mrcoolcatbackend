@@ -258,6 +258,12 @@ const KNOWN_ZONES = {
   'pla': { city: 'Alicante', area: 'Pla del Bon Repòs' },
   'explanada': { city: 'Alicante', area: 'Explanada' },
   'puerto': { city: 'Alicante', area: 'Puerto' },
+  'casco antiguo': { city: 'Alicante', area: 'Casco Antiguo' },
+  'el barrio': { city: 'Alicante', area: 'Casco Antiguo' },
+  'plaza san cristobal': { city: 'Alicante', area: 'Plaza San Cristóbal, Casco Antiguo' },
+  'plaza san cristóbal': { city: 'Alicante', area: 'Plaza San Cristóbal, Casco Antiguo' },
+  'san cristobal': { city: 'Alicante', area: 'Plaza San Cristóbal, Casco Antiguo' },
+  'san cristóbal': { city: 'Alicante', area: 'Plaza San Cristóbal, Casco Antiguo' },
   // Añade más zonas según tu área de operación
 };
 
@@ -271,6 +277,14 @@ function detectZone(text) {
     }
   }
   return null;
+}
+
+/**
+ * Normaliza texto eliminando acentos para búsquedas más flexibles.
+ */
+function normalizeText(text) {
+  if (!text) return '';
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -425,12 +439,23 @@ async function searchStoresByCoords(client, lat, lng, maxDistanceKm = 100) {
 
 /**
  * Busca tiendas por coincidencia de texto, incluyendo NUEVOS CAMPOS de ubicación.
+ * Busca tanto con el texto original como sin acentos para mayor flexibilidad.
  */
 async function searchStoresByText(client, searchText) {
+  const normalizedText = normalizeText(searchText);
+
+  // Construir query con ambas variantes (con y sin acentos)
+  let orConditions = `city.ilike.%${searchText}%,address.ilike.%${searchText}%,name.ilike.%${searchText}%,neighborhood.ilike.%${searchText}%,district.ilike.%${searchText}%,province.ilike.%${searchText}%`;
+
+  // Si el texto normalizado es diferente, añadir también búsqueda sin acentos
+  if (normalizedText !== searchText) {
+    orConditions += `,city.ilike.%${normalizedText}%,address.ilike.%${normalizedText}%,name.ilike.%${normalizedText}%,neighborhood.ilike.%${normalizedText}%,district.ilike.%${normalizedText}%,province.ilike.%${normalizedText}%`;
+  }
+
   const { data, error } = await client
     .from('stores')
     .select('*')
-    .or(`city.ilike.%${searchText}%,address.ilike.%${searchText}%,name.ilike.%${searchText}%,neighborhood.ilike.%${searchText}%,district.ilike.%${searchText}%,province.ilike.%${searchText}%`)
+    .or(orConditions)
     .limit(5);
 
   if (error) {
