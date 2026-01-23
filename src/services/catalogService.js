@@ -295,15 +295,12 @@ function deg2rad(deg) {
  *
  * CAPACIDADES:
  * 1. Búsqueda geoespacial por coordenadas del usuario
- * 2. Geocodificación de nombres de barrios/zonas (ej: "San Blas", "Centro")
- * 3. Detección de zonas conocidas en el texto
- * 4. Búsqueda por texto como fallback
+ * 2. Búsqueda directa por COINCIDENCIA DE ZONA/BARRIO (Prioridad 1)
+ * 3. Geocodificación de nombres de barrios/zonas (ej: "San Blas", "Centro")
+ * 4. Detección de zonas conocidas en el texto
  *
  * @param {string} location - Ciudad, zona o barrio (ej: "San Blas", "cerca del puerto").
  * @param {object} userLocation - { latitude, longitude } del usuario.
- *
- * Nota: Los datos se retornan en su idioma original.
- * Gemini traducirá automáticamente al idioma solicitado.
  */
 async function searchStores(location, userLocation) {
   const client = getSupabaseClient();
@@ -319,7 +316,15 @@ async function searchStores(location, userLocation) {
   if (location) {
     console.log(`[Catalog] 🔍 Analizando ubicación: "${location}"`);
 
-    // 2a. Detectar zonas conocidas localmente (más rápido, sin API)
+    // 2a. INTENTO DIRECTO EN BD (Nuevo): Buscar si coincide con neighborhood, district o address
+    // Esto es ideal para "Plaza San Cristóbal" si ya está en la columna neighborhood.
+    const directMatches = await searchStoresByText(client, location);
+    if (directMatches.length > 0) {
+      console.log(`[Catalog] ✅ Encontradas ${directMatches.length} tiendas por coincidencia directa de texto/barrio.`);
+      return directMatches;
+    }
+
+    // 2b. Detectar zonas conocidas localmente (fallback rápido)
     const knownZone = detectZone(location);
     if (knownZone) {
       console.log(`[Catalog] ✅ Zona conocida detectada: ${knownZone.area}, ${knownZone.city}`);
@@ -337,12 +342,9 @@ async function searchStores(location, userLocation) {
           }));
         }
       }
-
-      // Fallback: búsqueda por texto de la zona
-      return await searchStoresByText(client, knownZone.area);
     }
 
-    // 2b. Si no es zona conocida, intentar geocodificar el texto libre
+    // 2c. Si no es zona conocida, intentar geocodificar el texto libre
     const geoResult = await geocodePlace(`${location}, España`);
     if (geoResult) {
       console.log(`[Catalog] 📍 Geocodificado "${location}": ${geoResult.formatted_address}`);
@@ -355,8 +357,8 @@ async function searchStores(location, userLocation) {
       }
     }
 
-    // 2c. Fallback final: búsqueda por texto
-    console.log(`[Catalog] 📝 Búsqueda por texto: "${location}"`);
+    // 2d. Fallback final: búsqueda por texto (reintento por si acaso se nos pasó algo)
+    console.log(`[Catalog] 📝 Búsqueda por texto (fallback): "${location}"`);
     return await searchStoresByText(client, location);
   }
 
@@ -379,6 +381,8 @@ async function searchStores(location, userLocation) {
  * Busca tiendas por cercanía a coordenadas específicas.
  */
 async function searchStoresByCoords(client, lat, lng, maxDistanceKm = 100) {
+  // Traemos todas para filtrar en memoria (si no son muchas)
+  // OPTIMIZACIÓN FUTURE: Usar PostGIS o RPC 'calculate_distance' si la BD crece.
   const { data, error } = await client.from('stores').select('*');
 
   if (error) {
@@ -389,9 +393,12 @@ async function searchStoresByCoords(client, lat, lng, maxDistanceKm = 100) {
   const storesWithDist = data.map(store => {
     let coords = null;
 
+    // Prioridad 1: Columnas nativas de lat/lng
     if (store.latitude && store.longitude) {
       coords = { latitude: store.latitude, longitude: store.longitude };
-    } else if (store.google_maps_url) {
+    }
+    // Prioridad 2: Extraer de URL (legacy)
+    else if (store.google_maps_url) {
       coords = extractCoordinatesFromUrl(store.google_maps_url);
     }
 
@@ -417,13 +424,13 @@ async function searchStoresByCoords(client, lat, lng, maxDistanceKm = 100) {
 }
 
 /**
- * Busca tiendas por coincidencia de texto.
+ * Busca tiendas por coincidencia de texto, incluyendo NUEVOS CAMPOS de ubicación.
  */
 async function searchStoresByText(client, searchText) {
   const { data, error } = await client
     .from('stores')
     .select('*')
-    .or(`city.ilike.%${searchText}%,address.ilike.%${searchText}%,name.ilike.%${searchText}%,zone.ilike.%${searchText}%`)
+    .or(`city.ilike.%${searchText}%,address.ilike.%${searchText}%,name.ilike.%${searchText}%,neighborhood.ilike.%${searchText}%,district.ilike.%${searchText}%,province.ilike.%${searchText}%`)
     .limit(5);
 
   if (error) {
