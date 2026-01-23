@@ -271,9 +271,13 @@ function detectZone(text) {
   if (!text) return null;
   const lowerText = text.toLowerCase();
 
-  for (const [key, zone] of Object.entries(KNOWN_ZONES)) {
+  // Ordenar las claves por longitud (de mayor a menor) para que coincidencias más específicas tengan prioridad
+  // Esto evita que "plaza san cristobal" coincida con "pla" antes que con "plaza san cristobal"
+  const sortedKeys = Object.keys(KNOWN_ZONES).sort((a, b) => b.length - a.length);
+
+  for (const key of sortedKeys) {
     if (lowerText.includes(key)) {
-      return zone;
+      return KNOWN_ZONES[key];
     }
   }
   return null;
@@ -442,15 +446,33 @@ async function searchStoresByCoords(client, lat, lng, maxDistanceKm = 100) {
  * Busca tanto con el texto original como sin acentos para mayor flexibilidad.
  */
 async function searchStoresByText(client, searchText) {
-  const normalizedText = normalizeText(searchText);
+  console.log(`[Catalog] 🔎 searchStoresByText llamada con: "${searchText}"`);
 
-  // Construir query con ambas variantes (con y sin acentos)
-  let orConditions = `city.ilike.%${searchText}%,address.ilike.%${searchText}%,name.ilike.%${searchText}%,neighborhood.ilike.%${searchText}%,district.ilike.%${searchText}%,province.ilike.%${searchText}%`;
+  // Escapar caracteres especiales para PostgREST (espacios, comas, etc.)
+  // PostgREST requiere que los valores con caracteres especiales estén entre comillas dobles
+  const escapeForPostgrest = (text) => {
+    // Reemplazar comillas dobles existentes por comillas escapadas
+    const escaped = text.replace(/"/g, '\\"');
+    // Envolver en comillas dobles para que PostgREST lo interprete correctamente
+    return `"*${escaped}*"`;
+  };
+
+  const normalizedText = normalizeText(searchText);
+  console.log(`[Catalog] 🔎 Texto normalizado (sin acentos): "${normalizedText}"`);
+
+  const escapedSearch = escapeForPostgrest(searchText);
+  const escapedNormalized = escapeForPostgrest(normalizedText);
+
+  // Construir query con texto escapado
+  let orConditions = `city.ilike.${escapedSearch},address.ilike.${escapedSearch},name.ilike.${escapedSearch},neighborhood.ilike.${escapedSearch},district.ilike.${escapedSearch},province.ilike.${escapedSearch}`;
 
   // Si el texto normalizado es diferente, añadir también búsqueda sin acentos
   if (normalizedText !== searchText) {
-    orConditions += `,city.ilike.%${normalizedText}%,address.ilike.%${normalizedText}%,name.ilike.%${normalizedText}%,neighborhood.ilike.%${normalizedText}%,district.ilike.%${normalizedText}%,province.ilike.%${normalizedText}%`;
+    orConditions += `,city.ilike.${escapedNormalized},address.ilike.${escapedNormalized},name.ilike.${escapedNormalized},neighborhood.ilike.${escapedNormalized},district.ilike.${escapedNormalized},province.ilike.${escapedNormalized}`;
+    console.log(`[Catalog] 🔎 Búsqueda dual activada (con y sin acentos)`);
   }
+
+  console.log(`[Catalog] 🔎 Ejecutando query...`);
 
   const { data, error } = await client
     .from('stores')
@@ -459,8 +481,13 @@ async function searchStoresByText(client, searchText) {
     .limit(5);
 
   if (error) {
-    console.error('Error buscando tiendas por texto:', error);
+    console.error('[Catalog] ❌ Error buscando tiendas por texto:', error);
     return [];
+  }
+
+  console.log(`[Catalog] 🔎 Resultados encontrados: ${data ? data.length : 0}`);
+  if (data && data.length > 0) {
+    console.log(`[Catalog] 🔎 Tiendas encontradas:`, data.map(s => ({ name: s.name, address: s.address, neighborhood: s.neighborhood })));
   }
 
   return data.map(store => ({
