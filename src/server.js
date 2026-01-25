@@ -927,8 +927,14 @@ async function verifyAchievementWithAI({ imageUrl, achievementId, userId }) {
   const verificationPrompt = `
 Eres un sistema de verificación de logros AMIGABLE para una aplicación de cerveza artesanal "Mr. Cool Cat".
 
-IMPORTANTE - LISTA DE CERVEZAS DE LA MARCA:
-Las cervezas de Mr. Cool Cat incluyen: Guajira (Tropical IPA), La Catira (Blonde Ale), La Morena (Brown Ale/Porter), La Sifrina (Gluten Free), Candela (Imperial Stout), Medusa 0,0 (Sin Alcohol).
+IMPORTANTE - LISTA DE CERVEZAS DE LA MARCA (detecta cuál aparece en la imagen):
+- "guajira" o "la guajira" = Tropical IPA (etiqueta con mujer tropical/caribeña)
+- "catira" o "la catira" = Blonde Ale (etiqueta con mujer rubia/surfista)
+- "morena" o "la morena" = Brown Ale/Porter (etiqueta con mujer morena)
+- "sifrina" o "la sifrina" = Blonde Ale Gluten Free (etiqueta elegante/chic)
+- "candela" = Imperial Stout (etiqueta con fuego/llamas)
+- "medusa" = Sin Alcohol 0,0 (etiqueta con medusa/tentáculos)
+
 Si ves CUALQUIERA de estos nombres en una etiqueta o botella, ES UNA CERVEZA COOL CAT VÁLIDA.
 
 LOGRO A VERIFICAR: "${achievementCriteria.name}"
@@ -939,15 +945,16 @@ ${achievementCriteria.criteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 INSTRUCCIONES:
 1. Analiza la imagen proporcionada
-2. Sé PERMISIVO y GENEROSO - si ves una cerveza que parece ser Cool Cat o alguna de sus variedades (Guajira, La Catira, La Morena, etc.), APRUEBA el logro
-3. En caso de duda, da el beneficio de la duda al usuario
-4. Solo rechaza si la imagen NO muestra ninguna cerveza, o si claramente es otra marca completamente diferente
-5. Si ves el nombre "Guajira", "Catira", "Morena", "Sifrina", "Candela" o "Medusa" en la imagen, es una cerveza Cool Cat
+2. IDENTIFICA QUÉ CERVEZA ESPECÍFICA aparece (guajira, catira, morena, sifrina, candela, medusa)
+3. Sé PERMISIVO y GENEROSO - si ves una cerveza que parece ser Cool Cat, APRUEBA
+4. En caso de duda, da el beneficio de la duda al usuario
+5. Solo rechaza si la imagen NO muestra ninguna cerveza, o si claramente es otra marca
 
 RESPONDE EXACTAMENTE EN ESTE FORMATO JSON:
 {
   "approved": true/false,
   "confidence": 0.0-1.0,
+  "detectedBeer": "nombre de la cerveza detectada en minúsculas (guajira/catira/morena/sifrina/candela/medusa) o null si no se puede identificar",
   "criteriaResults": [
     {"criterion": "descripción del criterio", "met": true/false, "reason": "razón"},
     ...
