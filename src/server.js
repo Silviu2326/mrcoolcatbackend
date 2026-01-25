@@ -806,97 +806,98 @@ app.post('/chat', async (req, res) => {
 
 // --- VERIFICACIÓN DE LOGROS CON IA ---
 
+// Lista de cervezas de la marca Cool Cat / Mr. Cool Cat para referencia
+const COOL_CAT_BEERS = [
+  'Guajira', 'La Guajira',           // Tropical IPA
+  'La Catira', 'Catira',             // Blonde Ale
+  'La Morena', 'Morena',             // Brown Ale / Porter
+  'La Sifrina', 'Sifrina',           // Blonde Ale (Gluten Free)
+  'Candela',                          // Imperial Stout
+  'Medusa', 'Medusa 0,0',            // Sin Alcohol
+  'Mr. Cool Cat', 'Cool Cat', 'MrCoolCat'
+];
+
 // Criterios de verificación por tipo de logro
 const ACHIEVEMENT_VERIFICATION_CRITERIA = {
   'l1_iniciado_cervecero': {
     name: 'Iniciado Cervecero',
-    description: 'Verificar que la foto muestra una cerveza Mr. Cool Cat',
+    description: 'Verificar que la foto muestra una cerveza de la marca Cool Cat',
     criteria: [
-      'La imagen debe mostrar una cerveza (lata, botella o vaso)',
-      'Debe ser visible el logo o nombre "Mr. Cool Cat" o "Cool Cat"',
-      'La cerveza debe estar siendo consumida o presentada (no solo en estante de tienda)',
+      'La imagen debe mostrar una cerveza (lata, botella o vaso con cerveza)',
+      `Debe ser visible alguno de estos nombres/marcas en la etiqueta o botella: ${COOL_CAT_BEERS.join(', ')}`,
     ],
-    requiredMatches: 2, // Al menos 2 de los 3 criterios deben cumplirse
+    requiredMatches: 1, // Solo necesita mostrar una cerveza Cool Cat
   },
   'l1_explorador_estilos': {
     name: 'Explorador de Estilos',
-    description: 'Verificar foto con múltiples estilos de cerveza',
+    description: 'Verificar foto con múltiples estilos de cerveza Cool Cat',
     criteria: [
-      'La imagen debe mostrar al menos 3 cervezas diferentes',
-      'Las cervezas deben ser de la marca Cool Cat',
-      'Las cervezas deben ser de estilos visualmente diferentes (colores, etiquetas)',
+      'La imagen debe mostrar al menos 2-3 cervezas diferentes',
+      `Las cervezas deben ser de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
   'l1_mr_cat_cervecero': {
     name: 'Mr. Cat Cervecero',
-    description: 'Verificar foto con las 6 cervezas en un local',
+    description: 'Verificar foto con varias cervezas Cool Cat',
     criteria: [
-      'La imagen debe mostrar 6 cervezas diferentes',
-      'Las cervezas deben ser de la marca Cool Cat',
-      'El contexto debe parecer un bar o local (no una casa)',
+      'La imagen debe mostrar múltiples cervezas (idealmente 6)',
+      `Las cervezas deben ser de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
   'l1_cool_cat_master': {
     name: 'Cool Cat Master',
-    description: 'Verificar foto de las 6 cervezas en 6 locales distintos (puede ser múltiples fotos)',
+    description: 'Verificar foto de cerveza Cool Cat en un local',
     criteria: [
-      'La imagen debe mostrar cerveza Cool Cat',
-      'El contexto debe parecer un bar, restaurante o local comercial',
-      'La foto debe mostrar un ambiente diferente (para demostrar que es otro local)',
+      `La imagen debe mostrar cerveza Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
+      'El contexto debe parecer un bar, restaurante o local (mesas, ambiente de hostelería)',
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
   'l1_maestro_lupulo': {
     name: 'Maestro del Lúpulo',
-    description: 'Verificar foto de cerveza para valoración',
+    description: 'Verificar foto de cerveza Cool Cat',
     criteria: [
-      'La imagen debe mostrar una cerveza Cool Cat claramente visible',
-      'La etiqueta o logo debe ser legible',
-      'La foto debe tener buena calidad para mostrar detalles',
+      `La imagen debe mostrar una cerveza Cool Cat claramente visible (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
   'l2_fiestero_cool_cat': {
     name: 'Fiestero Cool Cat',
-    description: 'Verificar foto grupal en evento Cool Cat',
+    description: 'Verificar foto en evento o reunión con cerveza Cool Cat',
     criteria: [
-      'La imagen debe mostrar un grupo de personas (al menos 2)',
-      'Debe haber cervezas Cool Cat visibles en la foto',
-      'El contexto debe parecer un evento o fiesta (no ambiente casual)',
+      'La imagen debe mostrar personas o ambiente social/festivo',
+      `Debe haber cervezas Cool Cat visibles (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
   'l2_maestro_ceremonias': {
     name: 'Maestro de Ceremonias',
-    description: 'Verificar asistencia a eventos Cool Cat (12 eventos en un año)',
+    description: 'Verificar asistencia a eventos Cool Cat',
     criteria: [
-      'La imagen debe mostrar un evento o fiesta',
-      'Debe haber elementos de la marca Cool Cat visibles (carteles, vasos, decoración)',
-      'El contexto debe parecer un evento organizado (no reunión casual)',
+      'La imagen debe mostrar un evento, fiesta o reunión social',
+      `Debe haber elementos relacionados con Cool Cat (cervezas, carteles, decoración con nombres: ${COOL_CAT_BEERS.join(', ')})`,
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
   'l2_celebrity_cat': {
     name: 'Celebrity Cat',
     description: 'Verificar foto con amigos bebiendo Cool Cat',
     criteria: [
       'La imagen debe mostrar personas con cervezas',
-      'Las cervezas deben ser de la marca Cool Cat',
-      'La foto debe estar en un local/bar (no en casa)',
+      `Las cervezas deben ser de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
   'l2_banda_gato': {
     name: 'La Banda del Gato',
     description: 'Verificar foto grupal brindando con Cool Cat',
     criteria: [
-      'La imagen debe mostrar al menos 5 personas',
-      'Las personas deben estar brindando o sosteniendo cervezas',
-      'Las cervezas deben ser Cool Cat',
+      'La imagen debe mostrar varias personas (idealmente 5 o más)',
+      `Las personas deben tener cervezas Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
-    requiredMatches: 2,
+    requiredMatches: 1,
   },
 };
 
@@ -905,8 +906,7 @@ const DEFAULT_ACHIEVEMENT_CRITERIA = {
   name: 'Logro Genérico',
   description: 'Verificar que la foto está relacionada con cerveza Cool Cat',
   criteria: [
-    'La imagen debe mostrar una cerveza',
-    'La cerveza debe ser de la marca Cool Cat (visible en logo o etiqueta)',
+    `La imagen debe mostrar una cerveza de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
   ],
   requiredMatches: 1,
 };
@@ -925,7 +925,11 @@ async function verifyAchievementWithAI({ imageUrl, achievementId, userId }) {
 
   // Construir prompt para verificación
   const verificationPrompt = `
-Eres un sistema de verificación de logros para una aplicación de cerveza artesanal "Mr. Cool Cat".
+Eres un sistema de verificación de logros AMIGABLE para una aplicación de cerveza artesanal "Mr. Cool Cat".
+
+IMPORTANTE - LISTA DE CERVEZAS DE LA MARCA:
+Las cervezas de Mr. Cool Cat incluyen: Guajira (Tropical IPA), La Catira (Blonde Ale), La Morena (Brown Ale/Porter), La Sifrina (Gluten Free), Candela (Imperial Stout), Medusa 0,0 (Sin Alcohol).
+Si ves CUALQUIERA de estos nombres en una etiqueta o botella, ES UNA CERVEZA COOL CAT VÁLIDA.
 
 LOGRO A VERIFICAR: "${achievementCriteria.name}"
 DESCRIPCIÓN: ${achievementCriteria.description}
@@ -935,9 +939,10 @@ ${achievementCriteria.criteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 INSTRUCCIONES:
 1. Analiza la imagen proporcionada
-2. Evalúa cada criterio individualmente
-3. Sé estricto pero justo - el usuario debe demostrar que realmente cumplió el logro
-4. Si la imagen es borrosa, no muestra lo requerido, o parece manipulada, rechaza
+2. Sé PERMISIVO y GENEROSO - si ves una cerveza que parece ser Cool Cat o alguna de sus variedades (Guajira, La Catira, La Morena, etc.), APRUEBA el logro
+3. En caso de duda, da el beneficio de la duda al usuario
+4. Solo rechaza si la imagen NO muestra ninguna cerveza, o si claramente es otra marca completamente diferente
+5. Si ves el nombre "Guajira", "Catira", "Morena", "Sifrina", "Candela" o "Medusa" en la imagen, es una cerveza Cool Cat
 
 RESPONDE EXACTAMENTE EN ESTE FORMATO JSON:
 {
@@ -948,7 +953,7 @@ RESPONDE EXACTAMENTE EN ESTE FORMATO JSON:
     ...
   ],
   "summary": "Resumen breve de la verificación",
-  "feedback": "Mensaje amigable para el usuario explicando el resultado"
+  "feedback": "Mensaje amigable para el usuario explicando el resultado (en español)"
 }
 `;
 
