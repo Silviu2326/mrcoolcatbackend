@@ -830,30 +830,30 @@ const ACHIEVEMENT_VERIFICATION_CRITERIA = {
   },
   'l1_explorador_estilos': {
     name: 'Explorador de Estilos',
-    description: 'Verificar foto con múltiples estilos de cerveza Cool Cat',
+    description: 'Verificar foto de cerveza Cool Cat (el usuario irá subiendo fotos de diferentes cervezas)',
     criteria: [
-      'La imagen debe mostrar al menos 2-3 cervezas diferentes',
-      `Las cervezas deben ser de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
+      `La imagen debe mostrar al menos UNA cerveza Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
     requiredMatches: 1,
+    isMultiPhoto: true, // Indica que este logro acepta múltiples fotos individuales
   },
   'l1_mr_cat_cervecero': {
     name: 'Mr. Cat Cervecero',
-    description: 'Verificar foto con varias cervezas Cool Cat',
+    description: 'Verificar foto de cerveza Cool Cat (el usuario irá subiendo fotos de las 6 cervezas)',
     criteria: [
-      'La imagen debe mostrar múltiples cervezas (idealmente 6)',
-      `Las cervezas deben ser de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
+      `La imagen debe mostrar al menos UNA cerveza Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
     requiredMatches: 1,
+    isMultiPhoto: true,
   },
   'l1_cool_cat_master': {
     name: 'Cool Cat Master',
     description: 'Verificar foto de cerveza Cool Cat en un local',
     criteria: [
-      `La imagen debe mostrar cerveza Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
-      'El contexto debe parecer un bar, restaurante o local (mesas, ambiente de hostelería)',
+      `La imagen debe mostrar al menos UNA cerveza Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
     ],
     requiredMatches: 1,
+    isMultiPhoto: true,
   },
   'l1_maestro_lupulo': {
     name: 'Maestro del Lúpulo',
