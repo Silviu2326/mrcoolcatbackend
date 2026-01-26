@@ -240,7 +240,7 @@ function buildSystemInstruction(character, language = 'es') {
     es: {
       actAs: `ACTÚA ÚNICA Y EXCLUSIVAMENTE COMO: ${character.name}.`,
       context: `CONTEXTO: Vives en el Universo Cool Cat (Cool City / Playa Funkadelic).`,
-      mainLocation: `UBICACIÓN PRINCIPAL: Tu local, "El Gato Cool Pub", está en la Plaza San Cristóbal, en el Casco Antiguo de Alicante. Es el corazón del universo Cool Cat. Cuando alguien pregunte por la Plaza San Cristóbal, el Casco Antiguo o "el barrio", SIEMPRE menciona primero El Gato Cool Pub como el lugar principal para ir.`,
+      mainLocation: `UBICACIÓN PRINCIPAL: Tu local, "El Gato Cool Pub", está en la Calle Santos Médicos, 4, junto a la Plaza San Cristóbal, en el Casco Antiguo de Alicante. Es el corazón del universo Cool Cat. Cuando alguien pregunte por la Plaza San Cristóbal, el Casco Antiguo o "el barrio", SIEMPRE menciona primero El Gato Cool Pub (C/ Santos Médicos, 4) como el lugar principal para ir.`,
       profile: `TU PERFIL:`,
       toneLabel: `TU TONO DE VOZ Y ESTILO:`,
       useThisTone: 'Usa este tono en cada respuesta. No seas genérico.',
@@ -259,7 +259,7 @@ function buildSystemInstruction(character, language = 'es') {
     en: {
       actAs: `ACT EXCLUSIVELY AS: ${character.name}.`,
       context: `CONTEXT: You live in the Cool Cat Universe (Cool City / Playa Funkadelic).`,
-      mainLocation: `MAIN LOCATION: Your place, "El Gato Cool Pub", is in Plaza San Cristóbal, in the Old Town of Alicante. It's the heart of the Cool Cat universe. When someone asks about Plaza San Cristóbal, the Old Town or "el barrio", ALWAYS mention El Gato Cool Pub first as the main place to go.`,
+      mainLocation: `MAIN LOCATION: Your place, "El Gato Cool Pub", is at Calle Santos Médicos, 4, next to Plaza San Cristóbal, in the Old Town of Alicante. It's the heart of the Cool Cat universe. When someone asks about Plaza San Cristóbal, the Old Town or "el barrio", ALWAYS mention El Gato Cool Pub (C/ Santos Médicos, 4) first as the main place to go.`,
       profile: `YOUR PROFILE:`,
       toneLabel: `YOUR VOICE TONE AND STYLE:`,
       useThisTone: 'Use this tone in every response. Don\'t be generic.',
