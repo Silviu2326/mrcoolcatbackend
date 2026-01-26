@@ -339,7 +339,8 @@ async function searchStores(location, userLocation) {
     const directMatches = await searchStoresByText(client, location);
     if (directMatches.length > 0) {
       console.log(`[Catalog] ✅ Encontradas ${directMatches.length} tiendas por coincidencia directa de texto/barrio.`);
-      return directMatches;
+      // Aplicar priorización por zona
+      return prioritizeStoresByZone(directMatches, location);
     }
 
     // 2b. Detectar zonas conocidas localmente (fallback rápido)
@@ -353,11 +354,13 @@ async function searchStores(location, userLocation) {
         console.log(`[Catalog] 📍 Geocodificada: ${geoResult.formatted_address}`);
         const stores = await searchStoresByCoords(client, geoResult.latitude, geoResult.longitude, 10);
         if (stores.length > 0) {
-          return stores.map(s => ({
+          const storesWithInfo = stores.map(s => ({
             ...s,
             zone_info: `Zona: ${knownZone.area}`,
             geocoded_address: geoResult.formatted_address
           }));
+          // Aplicar priorización por zona
+          return prioritizeStoresByZone(storesWithInfo, location);
         }
       }
     }
@@ -368,16 +371,20 @@ async function searchStores(location, userLocation) {
       console.log(`[Catalog] 📍 Geocodificado "${location}": ${geoResult.formatted_address}`);
       const stores = await searchStoresByCoords(client, geoResult.latitude, geoResult.longitude, 15);
       if (stores.length > 0) {
-        return stores.map(s => ({
+        const storesWithGeo = stores.map(s => ({
           ...s,
           geocoded_address: geoResult.formatted_address
         }));
+        // Aplicar priorización por zona
+        return prioritizeStoresByZone(storesWithGeo, location);
       }
     }
 
     // 2d. Fallback final: búsqueda por texto (reintento por si acaso se nos pasó algo)
     console.log(`[Catalog] 📝 Búsqueda por texto (fallback): "${location}"`);
-    return await searchStoresByText(client, location);
+    const fallbackResults = await searchStoresByText(client, location);
+    // Aplicar priorización por zona
+    return prioritizeStoresByZone(fallbackResults, location);
   }
 
   // --- ESTRATEGIA 3: Sin ubicación - devolver todas ordenadas ---
@@ -494,6 +501,55 @@ async function searchStoresByText(client, searchText) {
     ...store,
     ...getStoreCategoryRules(store.category)
   }));
+}
+
+/**
+ * LOCALES PRIORITARIOS POR ZONA
+ * Cuando el usuario pregunte por estas zonas, estos locales deben aparecer primero.
+ */
+const PRIORITY_STORES_BY_ZONE = {
+  'plaza san cristobal': 'El Gato Cool Pub',
+  'plaza san cristóbal': 'El Gato Cool Pub',
+  'san cristobal': 'El Gato Cool Pub',
+  'san cristóbal': 'El Gato Cool Pub',
+  'casco antiguo': 'El Gato Cool Pub',
+  'el barrio': 'El Gato Cool Pub',
+};
+
+/**
+ * Reordena los resultados para priorizar un local específico según la zona buscada.
+ * @param {Array} stores - Lista de tiendas encontradas.
+ * @param {string} searchLocation - La ubicación/zona buscada.
+ * @returns {Array} - Lista reordenada con el local prioritario primero.
+ */
+function prioritizeStoresByZone(stores, searchLocation) {
+  if (!stores || stores.length === 0 || !searchLocation) return stores;
+
+  const lowerLocation = searchLocation.toLowerCase();
+
+  // Buscar si hay un local prioritario para esta zona
+  let priorityStoreName = null;
+  for (const [zone, storeName] of Object.entries(PRIORITY_STORES_BY_ZONE)) {
+    if (lowerLocation.includes(zone)) {
+      priorityStoreName = storeName;
+      break;
+    }
+  }
+
+  if (!priorityStoreName) return stores;
+
+  // Reordenar: el local prioritario primero
+  const priorityStore = stores.find(s =>
+    s.name && s.name.toLowerCase().includes(priorityStoreName.toLowerCase())
+  );
+
+  if (priorityStore) {
+    const otherStores = stores.filter(s => s !== priorityStore);
+    console.log(`[Catalog] ⭐ Priorizando "${priorityStoreName}" para zona "${searchLocation}"`);
+    return [priorityStore, ...otherStores];
+  }
+
+  return stores;
 }
 
 /**

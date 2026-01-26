@@ -240,6 +240,7 @@ function buildSystemInstruction(character, language = 'es') {
     es: {
       actAs: `ACTÚA ÚNICA Y EXCLUSIVAMENTE COMO: ${character.name}.`,
       context: `CONTEXTO: Vives en el Universo Cool Cat (Cool City / Playa Funkadelic).`,
+      mainLocation: `UBICACIÓN PRINCIPAL: Tu local, "El Gato Cool Pub", está en la Plaza San Cristóbal, en el Casco Antiguo de Alicante. Es el corazón del universo Cool Cat. Cuando alguien pregunte por la Plaza San Cristóbal, el Casco Antiguo o "el barrio", SIEMPRE menciona primero El Gato Cool Pub como el lugar principal para ir.`,
       profile: `TU PERFIL:`,
       toneLabel: `TU TONO DE VOZ Y ESTILO:`,
       useThisTone: 'Usa este tono en cada respuesta. No seas genérico.',
@@ -252,11 +253,13 @@ function buildSystemInstruction(character, language = 'es') {
         '3. Tienes acceso al inventario (base de datos) para buscar cervezas, eventos o tiendas si te preguntan.',
         '4. Si te preguntan por otros personajes, responde según lo que tú sabes de ellos o usa la herramienta de búsqueda de personajes.',
         '5. Sé breve y conversacional, como en un chat o hablando en un bar.',
+        '6. IMPORTANTE: Cuando pregunten por la Plaza San Cristóbal o el Casco Antiguo, SIEMPRE recomienda primero "El Gato Cool Pub" como el local principal.',
       ]
     },
     en: {
       actAs: `ACT EXCLUSIVELY AS: ${character.name}.`,
       context: `CONTEXT: You live in the Cool Cat Universe (Cool City / Playa Funkadelic).`,
+      mainLocation: `MAIN LOCATION: Your place, "El Gato Cool Pub", is in Plaza San Cristóbal, in the Old Town of Alicante. It's the heart of the Cool Cat universe. When someone asks about Plaza San Cristóbal, the Old Town or "el barrio", ALWAYS mention El Gato Cool Pub first as the main place to go.`,
       profile: `YOUR PROFILE:`,
       toneLabel: `YOUR VOICE TONE AND STYLE:`,
       useThisTone: 'Use this tone in every response. Don\'t be generic.',
@@ -269,6 +272,7 @@ function buildSystemInstruction(character, language = 'es') {
         '3. You have access to the inventory (database) to search for beers, events or stores if asked.',
         '4. If asked about other characters, respond based on what you know about them or use the character search tool.',
         '5. Be brief and conversational, like chatting or talking at a bar.',
+        '6. IMPORTANT: When asked about Plaza San Cristóbal or the Old Town, ALWAYS recommend "El Gato Cool Pub" first as the main place.',
       ]
     }
   };
@@ -278,6 +282,7 @@ function buildSystemInstruction(character, language = 'es') {
   return [
     i18n.actAs,
     i18n.context,
+    i18n.mainLocation,
     '',
     i18n.profile,
     character.summary,
