@@ -134,7 +134,7 @@ const characters = {
       en: 'Style is not bought, it is distilled.'
     },
     voice: {
-      elevenLabsVoiceId: 'sifrina-voice-id', // TODO: Agregar voice ID en ElevenLabs
+      elevenLabsVoiceId: 'EXAVITQu4vr4xnSDxMaL', // Bella - voz femenina sofisticada
       stability: 0.45,
       similarityBoost: 0.65,
       style: 0.75,

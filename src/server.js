@@ -904,6 +904,35 @@ const ACHIEVEMENT_VERIFICATION_CRITERIA = {
     ],
     requiredMatches: 1,
   },
+  'l1_gourmet_cat': {
+    name: 'Gourmet Cat',
+    description: 'Verificar que la foto muestra una cerveza Cool Cat acompañada de comida',
+    criteria: [
+      `La imagen debe mostrar una cerveza Cool Cat (botella o lata) con alguno de estos nombres: ${COOL_CAT_BEERS.join(', ')}`,
+      'La imagen debe mostrar comida o un plato de comida junto a la cerveza',
+    ],
+    requiredMatches: 2, // Debe cumplir ambos: cerveza + comida
+  },
+  'l2_alma_fiesta': {
+    name: 'Alma de la Fiesta',
+    description: 'Verificar foto brindando con al menos un amigo',
+    criteria: [
+      'La imagen debe mostrar al menos 2 personas O al menos 2 cervezas visibles',
+      `Las cervezas deben ser de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
+      'La foto debe transmitir un ambiente social/de brindis',
+    ],
+    requiredMatches: 2, // Al menos 2 de los 3 criterios
+  },
+  'l1_triada_perfecta': {
+    name: 'La Tríada Perfecta',
+    description: 'Verificar que la foto muestra 3 variedades distintas de cerveza Cool Cat',
+    criteria: [
+      'La imagen debe mostrar exactamente 3 o más botellas/latas de cerveza en la misma foto',
+      `Las cervezas deben ser de la marca Cool Cat (nombres válidos: ${COOL_CAT_BEERS.join(', ')})`,
+      'Deben ser variedades DISTINTAS (por ejemplo: Guajira, Catira y Morena)',
+    ],
+    requiredMatches: 3, // Debe cumplir los 3 criterios
+  },
 };
 
 // Criterio genérico para logros no definidos
