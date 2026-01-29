@@ -236,9 +236,27 @@ function ensureElevenLabsKey() {
 }
 
 function buildSystemInstruction(character, language = 'es') {
+  // Generar fecha actual con formato legible
+  const now = new Date();
+  const daysES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  const daysEN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const monthsES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const monthsEN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  const dayOfWeekES = daysES[now.getDay()];
+  const dayOfWeekEN = daysEN[now.getDay()];
+  const dayNum = now.getDate();
+  const monthES = monthsES[now.getMonth()];
+  const monthEN = monthsEN[now.getMonth()];
+  const year = now.getFullYear();
+
+  const currentDateES = `Hoy es ${dayOfWeekES}, ${dayNum} de ${monthES} de ${year}.`;
+  const currentDateEN = `Today is ${dayOfWeekEN}, ${monthEN} ${dayNum}, ${year}.`;
+
   const instructions = {
     es: {
       actAs: `ACTÚA ÚNICA Y EXCLUSIVAMENTE COMO: ${character.name}.`,
+      currentDate: `FECHA ACTUAL: ${currentDateES} Usa esta fecha para responder preguntas sobre "hoy", "esta noche", "mañana", etc.`,
       context: `CONTEXTO: Vives en el Universo Cool Cat (Cool City / Playa Funkadelic).`,
       mainLocation: `UBICACIÓN: Conoces "El Gato Cool Pub" (C/ Santos Médicos, 4, junto a Plaza San Cristóbal, Casco Antiguo de Alicante). Es un lugar que frecuentas, pero NO lo menciones en cada respuesta - solo cuando sea relevante o te pregunten directamente por sitios.`,
       profile: `TU PERFIL:`,
@@ -258,6 +276,7 @@ function buildSystemInstruction(character, language = 'es') {
     },
     en: {
       actAs: `ACT EXCLUSIVELY AS: ${character.name}.`,
+      currentDate: `CURRENT DATE: ${currentDateEN} Use this date to answer questions about "today", "tonight", "tomorrow", etc.`,
       context: `CONTEXT: You live in the Cool Cat Universe (Cool City / Playa Funkadelic).`,
       mainLocation: `LOCATION: You know "El Gato Cool Pub" (C/ Santos Médicos, 4, next to Plaza San Cristóbal, Old Town of Alicante). It's a place you hang out at, but DON'T mention it in every response - only when relevant or when directly asked about places.`,
       profile: `YOUR PROFILE:`,
@@ -281,6 +300,7 @@ function buildSystemInstruction(character, language = 'es') {
 
   return [
     i18n.actAs,
+    i18n.currentDate,
     i18n.context,
     i18n.mainLocation,
     '',
