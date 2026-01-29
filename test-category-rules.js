@@ -25,14 +25,14 @@ function getStoreCategoryRules(category) {
             allowed_actions: ["comer", "cenar", "beber", "celebraciones"],
             restrictions: "Se recomienda reservar."
         },
-        'supermercados': {
+        'supermarkets': {
             allowed_actions: ["comprar para llevar", "abastecimiento"],
             restrictions: "ESTRICTAMENTE PROHIBIDO consumir en el local. Solo venta."
         }
     };
 
     // Buscamos coincidencia parcial o directa
-    if (normalized.includes('supermercado')) return rules['supermercados'];
+    if (normalized.includes('supermarket')) return rules['supermarkets'];
     if (normalized.includes('restaurant')) return rules['restaurants'];
     if (normalized.includes('pub')) return rules['pubs'];
     if (normalized.includes('cafe') || normalized.includes('bar')) return rules['cafes / bars'];
@@ -46,8 +46,8 @@ function getStoreCategoryRules(category) {
 
 // Test Cases
 const cases = [
-    { input: "Supermercado", expectedKey: "supermercados" },
-    { input: "supermercados", expectedKey: "supermercados" },
+    { input: "Supermarket", expectedKey: "supermarkets" },
+    { input: "supermarkets", expectedKey: "supermarkets" },
     { input: "Bar", expectedKey: "cafes / bars" },
     { input: "Cafe Bar", expectedKey: "cafes / bars" },
     { input: "Pub irlandés", expectedKey: "pubs" },
@@ -63,7 +63,7 @@ cases.forEach(c => {
     console.log(`Input: "${c.input}" -> Actions: [${result.allowed_actions}] | Restriction: "${result.restrictions}"`);
 
     // Basic validation
-    if (c.expectedKey === 'supermercados' && !result.restrictions.includes("PROHIBIDO")) console.error("FAIL: Supermarket should fail restriction check");
+    if (c.expectedKey === 'supermarkets' && !result.restrictions.includes("PROHIBIDO")) console.error("FAIL: Supermarket should fail restriction check");
     else if (c.expectedKey === 'pubs' && !result.allowed_actions.includes("música")) console.error("FAIL: Pub should have music");
     else passed++;
 });

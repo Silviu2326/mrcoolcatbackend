@@ -97,6 +97,91 @@ async function getFullMenu() {
 }
 
 /**
+ * Parsea expresiones de tiempo relativas y devuelve un rango de fechas.
+ * @param {string} query - Texto que puede contener expresiones como "tonight", "today", "tomorrow", etc.
+ * @returns {object|null} - { start: Date, end: Date, remainingQuery: string } o null si no se detectó fecha.
+ */
+function parseDateExpression(query) {
+  if (!query) return null;
+
+  const lowerQuery = query.toLowerCase().trim();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Expresiones en inglés y español
+  const datePatterns = [
+    // Tonight / Esta noche
+    {
+      patterns: ['tonight', 'this evening', 'esta noche', 'hoy noche', 'hoy por la noche'],
+      getRange: () => ({
+        start: now, // Desde ahora
+        end: new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1) // Hasta las 23:59:59 de hoy
+      })
+    },
+    // Today / Hoy
+    {
+      patterns: ['today', 'hoy', 'this day'],
+      getRange: () => ({
+        start: now,
+        end: new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1)
+      })
+    },
+    // Tomorrow / Mañana
+    {
+      patterns: ['tomorrow', 'mañana', 'manana'],
+      getRange: () => {
+        const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+        return {
+          start: tomorrow,
+          end: new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000 - 1)
+        };
+      }
+    },
+    // This weekend / Este fin de semana
+    {
+      patterns: ['this weekend', 'este fin de semana', 'este finde', 'el finde'],
+      getRange: () => {
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday
+        const daysUntilSaturday = dayOfWeek === 0 ? 6 : (6 - dayOfWeek);
+        const saturday = new Date(today.getTime() + daysUntilSaturday * 24 * 60 * 60 * 1000);
+        const sundayEnd = new Date(saturday.getTime() + 2 * 24 * 60 * 60 * 1000 - 1);
+        return {
+          start: dayOfWeek === 0 || dayOfWeek === 6 ? now : saturday,
+          end: sundayEnd
+        };
+      }
+    },
+    // Next week / La próxima semana
+    {
+      patterns: ['next week', 'la próxima semana', 'la proxima semana', 'semana que viene'],
+      getRange: () => {
+        const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
+        const nextMonday = new Date(today.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
+        const nextSunday = new Date(nextMonday.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+        return {
+          start: nextMonday,
+          end: nextSunday
+        };
+      }
+    }
+  ];
+
+  for (const { patterns, getRange } of datePatterns) {
+    for (const pattern of patterns) {
+      if (lowerQuery.includes(pattern)) {
+        const { start, end } = getRange();
+        // Remover el patrón de fecha del query para búsqueda de texto
+        const remainingQuery = lowerQuery.replace(pattern, '').trim();
+        console.log(`[Events] 📅 Detectada expresión temporal "${pattern}": ${start.toISOString()} - ${end.toISOString()}`);
+        return { start, end, remainingQuery: remainingQuery || null };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Busca eventos próximos.
  * @param {string} query - Término de búsqueda opcional.
  *
@@ -107,15 +192,33 @@ async function searchEvents(query) {
   const client = getSupabaseClient();
   if (!client) return [];
 
+  // Intentar detectar expresiones de fecha relativas
+  const dateRange = parseDateExpression(query);
+
   let dbQuery = client
     .from('events')
-    .select('*')
-    .gte('start_date', new Date().toISOString()) // Usamos start_date
-    .order('start_date', { ascending: true });
+    .select('*');
 
-  if (query) {
-    dbQuery = dbQuery.or(`title.ilike.%${query}%,description.ilike.%${query}%`);
+  if (dateRange) {
+    // Si se detectó una expresión de fecha, filtrar por ese rango específico
+    dbQuery = dbQuery
+      .gte('start_date', dateRange.start.toISOString())
+      .lte('start_date', dateRange.end.toISOString());
+
+    // Si hay query restante después de quitar la expresión de fecha, buscar por texto
+    if (dateRange.remainingQuery) {
+      dbQuery = dbQuery.or(`title.ilike.%${dateRange.remainingQuery}%,description.ilike.%${dateRange.remainingQuery}%`);
+    }
+  } else {
+    // Comportamiento original: eventos desde ahora en adelante
+    dbQuery = dbQuery.gte('start_date', new Date().toISOString());
+
+    if (query) {
+      dbQuery = dbQuery.or(`title.ilike.%${query}%,description.ilike.%${query}%`);
+    }
   }
+
+  dbQuery = dbQuery.order('start_date', { ascending: true });
 
   const { data, error } = await dbQuery.limit(5);
 
@@ -123,6 +226,12 @@ async function searchEvents(query) {
     console.error('Error buscando eventos:', error);
     return [];
   }
+
+  // Si no hay eventos para la fecha específica, informarlo en los datos
+  if (dateRange && (!data || data.length === 0)) {
+    console.log(`[Events] ℹ️ No hay eventos para el rango de fecha especificado`);
+  }
+
   return data;
 }
 
@@ -577,14 +686,14 @@ function getStoreCategoryRules(category) {
       allowed_actions: ["comer", "cenar", "beber", "celebraciones"],
       restrictions: "Se recomienda reservar."
     },
-    'supermercados': {
+    'supermarkets': {
       allowed_actions: ["comprar para llevar", "abastecimiento"],
       restrictions: "ESTRICTAMENTE PROHIBIDO consumir en el local. Solo venta."
     }
   };
 
   // Buscamos coincidencia parcial o directa
-  if (normalized.includes('supermercado')) return rules['supermercados'];
+  if (normalized.includes('supermarket')) return rules['supermarkets'];
   if (normalized.includes('restaurant')) return rules['restaurants'];
   if (normalized.includes('pub')) return rules['pubs'];
   if (normalized.includes('cafe') || normalized.includes('bar')) return rules['cafes / bars'];
