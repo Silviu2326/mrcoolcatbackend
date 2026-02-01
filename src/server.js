@@ -863,11 +863,21 @@ app.post('/api/send-registration-email', async (req, res) => {
 // Endpoint para enviar notificaciones push (Proxy para evitar CORS)
 app.post('/api/send-push-notification', async (req, res) => {
   try {
+    // Detectar si es un array de mensajes o un solo mensaje
+    const isArray = Array.isArray(req.body);
+    const messages = isArray ? req.body : [req.body];
+    const firstMessage = messages[0] || {};
+
     console.log('📨 Enviando notificación push:', {
-      to_count: Array.isArray(req.body.to) ? req.body.to.length : 1,
-      title: req.body.title,
-      image: req.body.image || 'Sin imagen'
+      count: messages.length,
+      title: firstMessage.title,
+      hasAndroidImage: !!firstMessage.android?.image,
+      hasIOSAttachments: !!firstMessage.ios?.attachments,
+      imageUrl: firstMessage.android?.image || firstMessage.ios?.attachments?.[0]?.url || 'Sin imagen'
     });
+
+    // Log completo del primer mensaje para debug
+    console.log('📝 Payload del primer mensaje:', JSON.stringify(firstMessage, null, 2));
 
     const response = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
@@ -880,6 +890,7 @@ app.post('/api/send-push-notification', async (req, res) => {
     });
 
     const data = await response.json();
+    console.log('✅ Respuesta de Expo:', JSON.stringify(data, null, 2));
     res.status(response.status).json(data);
   } catch (error) {
     console.error('❌ Error enviando notificación push:', error.message);
