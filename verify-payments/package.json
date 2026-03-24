@@ -1,0 +1,17 @@
+{
+  "name": "verify-payments",
+  "version": "1.0.0",
+  "description": "Verificador de pagos pendientes de Stripe",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "verify": "node index.js"
+  },
+  "dependencies": {
+    "stripe": "^11.0.0",
+    "@supabase/supabase-js": "^2.38.0",
+    "node-cron": "^3.0.3",
+    "dotenv": "^17.2.3",
+    "nodemailer": "^7.0.13"
+  }
+}
